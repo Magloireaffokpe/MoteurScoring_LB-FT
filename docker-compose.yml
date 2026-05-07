@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: scoring_db
+    environment:
+      POSTGRES_USER: marcos
+      POSTGRES_PASSWORD: dev_password_change_in_prod
+      POSTGRES_DB: scoring_db
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U marcos"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - scoring_network
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../Dockerfile
+    container_name: scoring_backend
+    environment:
+      DATABASE_URL: postgresql://marcos:dev_password_change_in_prod@postgres:5432/scoring_db
+      SECRET_KEY: dev_secret_key_change_in_production
+      DEBUG: "false"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - scoring_network
+
+  # React Frontend (optionnel en Docker — dev server souvent en local)
+  frontend:
+    image: node:18-alpine
+    container_name: scoring_frontend
+    working_dir: /app
+    environment:
+      VITE_API_URL: http://localhost:8000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+    command: npm run dev
+    networks:
+      - scoring_network
+
+volumes:
+  postgres_data:
+
+networks:
+  scoring_network:
+    driver: bridge
