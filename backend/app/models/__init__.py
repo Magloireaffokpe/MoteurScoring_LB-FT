@@ -5,6 +5,10 @@ from app.models.scoring_criteria import ScoringCriteria
 from app.models.risk_thresholds import RiskThreshold
 from app.models.user_roles import UserRole
 from app.models.users import User
+from app.models.customers import Customer
+from app.models.customer_docs import CustomerDoc
+from app.models.customer_accounts import CustomerAccount
+from app.models.transactions import Transaction
 
 __all__ = [
     "Country",
@@ -13,5 +17,8 @@ __all__ = [
     "RiskThreshold",
     "UserRole",
     "User",
-
+    "Customer",
+    "CustomerDoc",
+    "CustomerAccount",
+    "Transaction"
 ]
