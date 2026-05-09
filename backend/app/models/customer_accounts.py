@@ -17,7 +17,7 @@ class CustomerAccount(Base):
     created_at= Column(DateTime, server_default=func.now())
 
     customer = relationship("Customer", back_populates="accounts")
-    transaction = relationship("Transaction", back_populates="account", cascade="all, delete-orphan")
+    transactions = relationship("Transaction", back_populates="account", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<CustomerAccount {self.type_compte} — client {self.client_id}>"

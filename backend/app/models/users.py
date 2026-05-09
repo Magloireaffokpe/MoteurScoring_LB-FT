@@ -18,7 +18,7 @@ class User(Base):
     created_at = Column(DateTime, server_default=func.now())
 
     role = relationship("UserRole", back_populates="users")
-    audit_logs = relationship("AuditLog", back_populates="user")
+    #audit_logs = relationship("AuditLog", back_populates="user")
 
     def __repr__(self):
         return f"<User {self.login}>"

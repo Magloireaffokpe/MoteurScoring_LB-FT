@@ -47,8 +47,8 @@ class Customer(Base):
     country = relationship("Country", back_populates="customers")
     documents = relationship("CustomerDoc", back_populates="customer", cascade="all, delete-orphan")
     accounts = relationship("CustomerAccount", back_populates="customer", cascade="all, delete-orphan")
-    alerts = relationship("Alert", back_populates="customer")
-    scores = relationship("Score", back_populates="customer")
+    #alerts = relationship("Alert", back_populates="customer")
+    #scores = relationship("Score", back_populates="customer")
 
     def __repr__(self):
         return f"<Customer {self.prenom} {self.nom}>"
