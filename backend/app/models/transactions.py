@@ -10,12 +10,12 @@ class Transaction(Base):
     __tablename__ = "transactions"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    compte_id = Column(UUID(as_uuid=True), ForeignKey("customer_accounts.id", ondelete="CASCADE"), nullable=False)
+    compte_id = Column(UUID(as_uuid=True), ForeignKey("customer_accounts.id", ondelete="CASCADE"), nullable=False,index=True)
 
     montant = Column(Numeric(15, 2), nullable=False)
-    devise = Column(String(5), default="XOF")
+    devise = Column(String(5), default="XOF",server_default="XOF") # 'XOF', 'USD', 'EUR', etc.
     type_op = Column(String(50), nullable=True)       # 'DEPOT', 'RETRAIT', 'VIREMENT', 'PAIEMENT'
-    date_op = Column(DateTime, server_default=func.now())
+    date_op = Column(DateTime, server_default=func.now(),index=True)
     canal = Column(String(50), nullable=True)         # 'MOBILE', 'GUICHET', 'INTERNET', 'ATM'
 
     # Texte libre — nom institution, compte, ville

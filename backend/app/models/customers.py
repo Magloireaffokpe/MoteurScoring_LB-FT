@@ -4,6 +4,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.base import Base
+import sqlalchemy as sa
 
 
 class Customer(Base):
@@ -33,11 +34,11 @@ class Customer(Base):
     pays = Column(Integer, ForeignKey("countries.id"), nullable=True)
 
     # LBC/FT
-    statut_pep = Column(Boolean, default=False)
+    statut_pep = Column(Boolean, default=False,server_default=sa.text("false"),index=True)
     pep_verified_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
-    kyc_level = Column(String(10), default="LOW")         # 'LOW', 'MEDIUM', 'HIGH'
-    kyc_completion = Column(Integer, default=0)           # % 0-100
-    status = Column(String(20), default="ACTIVE")         # 'ACTIVE', 'INACTIVE', 'SUSPENDED'
+    kyc_level = Column(String(10), default="LOW",server_default="LOW", index=True)         # 'LOW', 'MEDIUM', 'HIGH'
+    kyc_completion = Column(Integer, default=0,server_default=sa.text('0'))           # % 0-100
+    status = Column(String(20), default="ACTIVE",server_default="ACTIVE",index=True)         # 'ACTIVE', 'INACTIVE', 'SUSPENDED'
 
     date_creation = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
@@ -47,8 +48,8 @@ class Customer(Base):
     country = relationship("Country", back_populates="customers")
     documents = relationship("CustomerDoc", back_populates="customer", cascade="all, delete-orphan")
     accounts = relationship("CustomerAccount", back_populates="customer", cascade="all, delete-orphan")
-    #alerts = relationship("Alert", back_populates="customer")
-    #scores = relationship("Score", back_populates="customer")
+    alerts = relationship("Alert", back_populates="customer")
+    scores = relationship("Score", back_populates="customer")
 
     def __repr__(self):
         return f"<Customer {self.prenom} {self.nom}>"

@@ -4,7 +4,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.base import Base
-
+import sqlalchemy as sa
 
 class User(Base):
     __tablename__ = "users"
@@ -13,12 +13,12 @@ class User(Base):
     login = Column(String(50), unique=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
     role_id = Column(Integer, ForeignKey("user_roles.id"), nullable=False)
-    is_active = Column(Boolean, default=True)
+    is_active = Column(Boolean, default=True,server_default=sa.text('true'))
     last_login = Column(DateTime, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
 
     role = relationship("UserRole", back_populates="users")
-    #audit_logs = relationship("AuditLog", back_populates="user")
+    audit_logs = relationship("AuditLog", back_populates="user")
 
     def __repr__(self):
         return f"<User {self.login}>"

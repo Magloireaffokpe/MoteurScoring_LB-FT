@@ -9,6 +9,10 @@ from app.models.customers import Customer
 from app.models.customer_docs import CustomerDoc
 from app.models.customer_accounts import CustomerAccount
 from app.models.transactions import Transaction
+from app.models.alerts import Alert
+from app.models.audit_logs import AuditLog
+from app.models.pep_list import PepEntry
+from app.models.scores import Score
 
 __all__ = [
     "Country",
@@ -20,5 +24,9 @@ __all__ = [
     "Customer",
     "CustomerDoc",
     "CustomerAccount",
-    "Transaction"
+    "Transaction",
+    "Alert",
+    "AuditLog",
+    "PepEntry",
+    "Score",
 ]

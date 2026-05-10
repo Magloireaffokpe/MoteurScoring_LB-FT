@@ -13,7 +13,7 @@ class CustomerAccount(Base):
     type_compte= Column(String(50),nullable=True) #epargne , courant
     solde_moyen = Column(Numeric(15,2),default=0)
     date_ouverture = Column(Date,nullable=True)
-    status = Column(String(50), default="ACTIF")  #Actif, Bloqué
+    status = Column(String(50), default="ACTIF",server_default="ACTIF")  #Actif, Bloqué
     created_at= Column(DateTime, server_default=func.now())
 
     customer = relationship("Customer", back_populates="accounts")
