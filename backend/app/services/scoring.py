@@ -145,7 +145,7 @@ class ScoringEngine:
         """
         rows = (
             self.db.query(ScoringCriteria)
-            .filter(ScoringCriteria.is_active == True)  # noqa: E712
+            #.filter(ScoringCriteria.is_active == True)  # noqa: E712
             .all()
         )
         if rows:
@@ -508,11 +508,16 @@ class ScoringEngine:
     # ──────────────────────────────────────────────────────────────────────
 
     def _get_category(self, score: int) -> str:
-        """Retourne la catégorie de risque selon les seuils en base."""
         for t in sorted(self._thresholds, key=lambda x: x["min_score"]):
             if t["min_score"] <= score <= t["max_score"]:
-                return t["category"]
-        # Fallback absolu
-        if   score <= 33:  return "FAIBLE"
-        elif score <= 66:  return "MOYEN"
+                cat = t["category"]
+                # Normalisation pour l'API
+                if cat == "ELEVE":
+                    return "ÉLEVÉ"
+                return cat
+         # Fallback
+        if score <= 33:
+            return "FAIBLE"
+        elif score <= 66:
+            return "MOYEN"
         return "ÉLEVÉ"
