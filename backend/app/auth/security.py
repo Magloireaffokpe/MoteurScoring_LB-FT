@@ -26,7 +26,7 @@ def create_access_token(data:dict)->str:
 
 #decoded token 
 
-def decoded_token(token:str)->dict|None:
+def decode_token(token:str)->dict|None:
     try:
         return jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
     except JWTError:
