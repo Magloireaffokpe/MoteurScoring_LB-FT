@@ -1,5 +1,14 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from sqlalchemy.exc import SQLAlchemyError
+from app.middleware.logging import RequestLoggingMiddleware
+from app.middleware.error_handlers import (
+    validation_exception_handler,
+    sqlalchemy_exception_handler,
+    generic_exception_handler,
+)
+
 
 # Routers Marcos
 from app.routers import (
@@ -33,6 +42,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.add_middleware(RequestLoggingMiddleware)
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(SQLAlchemyError, sqlalchemy_exception_handler)
+app.add_exception_handler(Exception, generic_exception_handler)
 
 
 # ─── Routers Marcos ───────────────────────────────────────
