@@ -437,8 +437,8 @@ def generate_customer_pdf(
     )
     open_alerts: list[Alert] = (
         db.query(Alert)
-        .filter(Alert.customer_id == customer_id)
-        .order_by(Alert.created_at.desc())
+        .filter(Alert.client_id == customer_id)
+        .order_by(Alert.date_creation.desc())
         .limit(10)
         .all()
     )
@@ -675,17 +675,15 @@ def generate_customer_pdf(
         a_rows = []
         for a in open_alerts:
             a_rows.append([
-                a.alert_type or "—",
-                _fmt_datetime(a.created_at),
-                a.status or "—",
-                a.risk_level or "—",
-                a.action_taken or "En attente",
-                "Oui" if a.sar_filed else "Non",
+                a.type_alerte or "—",
+                _fmt_datetime(a.date_creation),
+                a.statut or "—",
+                "Oui" if a.sar_declare else "Non",
             ])
         elements.append(_standard_table(
-            ["Type", "Date création", "Statut", "Niveau", "Action", "SAR déposé"],
+            ["Type", "Date création", "Statut", "SAR déposé"],
             a_rows,
-            [3.5 * cm, 3.5 * cm, 2.5 * cm, 2 * cm, 3 * cm, 2.5 * cm],
+            [5 * cm, 4 * cm, 4 * cm, 4 * cm],
         ))
     else:
         elements.append(Paragraph(
@@ -874,7 +872,7 @@ def generate_sar_pdf(
     if not alert:
         raise ValueError(f"Alerte introuvable : {alert_id}")
 
-    customer = db.query(Customer).filter(Customer.id == alert.customer_id).first()
+    customer = db.query(Customer).filter(Customer.id == alert.client_id).first()
     if not customer:
         raise ValueError(f"Client introuvable pour alerte : {alert_id}")
 
@@ -1055,11 +1053,11 @@ def generate_sar_pdf(
     elements.append(Spacer(1, 4))
 
     alert_data = [
-        ["Type d'alerte",     alert.alert_type or "—",
-         "Niveau risque",     alert.risk_level or "—"],
-        ["Date détection",    _fmt_datetime(alert.created_at),
-         "Statut",            alert.status or "—"],
-        ["Description",       Paragraph(alert.description or "—",
+        ["Type d'alerte",     alert.type_alerte or "—",
+         "Statut",            alert.statut or "—"],
+        ["Date détection",    _fmt_datetime(alert.date_creation),
+         "SAR déclaré",       "Oui" if alert.sar_declare else "Non"],
+        ["Décision/Motif",    Paragraph(alert.decision or "—",
                                         styles["body"]), "", ""],
     ]
     alert_t = Table(alert_data, colWidths=[3.5 * cm, 5.5 * cm, 3 * cm, 5 * cm])

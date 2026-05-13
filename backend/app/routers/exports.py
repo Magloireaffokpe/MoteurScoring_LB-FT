@@ -4,9 +4,9 @@ app/routers/exports.py
 Endpoints d'export LBC/FT — RiskGuard (IMF béninoises)
 
 Routes (section 7 du contrat API v1.0) :
-  GET /api/exports/customer/{customer_id}/pdf      → Fiche client PDF
-  GET /api/exports/transactions/{customer_id}/csv  → Transactions CSV
-  GET /api/exports/sar/{alert_id}/pdf              → SAR PDF (CENTIF)
+  GET /exports/customer/{customer_id}/pdf      → Fiche client PDF
+  GET /exports/transactions/{customer_id}/csv  → Transactions CSV
+  GET /exports/sar/{alert_id}/pdf              → SAR PDF (CENTIF)
 
 Authentification : JWT obligatoire (rôle compliance_officer ou admin).
 Réponse         : StreamingResponse (aucune écriture disque).
@@ -69,11 +69,11 @@ def _today_str() -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# GET /api/exports/customer/{customer_id}/pdf
+# GET /exports/customer/{customer_id}/pdf
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get(
-    "/api/exports/customer/{customer_id}/pdf",
+    "/exports/customer/{customer_id}/pdf",
     summary="Export PDF — Fiche d'évaluation client LBC/FT",
     description=(
         "Génère la fiche d'évaluation du risque LBC/FT d'un client en PDF (3 pages). "
@@ -147,11 +147,11 @@ async def export_customer_pdf(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# GET /api/exports/transactions/{customer_id}/csv
+# GET /exports/transactions/{customer_id}/csv
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get(
-    "/api/exports/transactions/{customer_id}/csv",
+    "/exports/transactions/{customer_id}/csv",
     summary="Export CSV — Transactions du client",
     description=(
         "Exporte les transactions d'un client au format CSV (séparateur `;`, UTF-8). "
@@ -232,11 +232,11 @@ async def export_transactions_csv(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# GET /api/exports/sar/{alert_id}/pdf
+# GET /exports/sar/{alert_id}/pdf
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get(
-    "/api/exports/sar/{alert_id}/pdf",
+    "/exports/sar/{alert_id}/pdf",
     summary="Export PDF — Déclaration de Soupçon SAR (CENTIF)",
     description=(
         "Génère la Déclaration de Soupçon (SAR) conforme CENTIF Bénin au format PDF. "

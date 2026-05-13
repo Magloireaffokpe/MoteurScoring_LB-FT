@@ -4,10 +4,10 @@ app/routers/scoring.py
 Endpoints REST pour le module Scoring LBC/FT — RiskGuard.
 
 Routes :
-  POST /api/scoring                        → calcul du score initial
-  POST /api/scoring/rescore                → recalcul manuel (compliance officer)
-  GET  /api/scores/{score_id}              → détails d'un score particulier
-  GET  /api/customers/{customer_id}/scores → historique paginé des scores
+  POST /scoring                        → calcul du score initial
+  POST /scoring/rescore                → recalcul manuel (compliance officer)
+  GET  /scores/{score_id}              → détails d'un score particulier
+  GET  /customers/{customer_id}/scores → historique paginé des scores
 
 Contrat API v1.0 — mai 2026
 
@@ -155,7 +155,7 @@ def _run_scoring(
     http_request: Request | None = None,
 ) -> ScoreResponse:
     """
-    Logique commune aux endpoints POST /api/scoring et POST /api/scoring/rescore.
+    Logique commune aux endpoints POST /scoring et POST /scoring/rescore.
 
     Enchaîne :
       1. Vérification de l'existence du client (→ 404 si absent)
@@ -255,11 +255,11 @@ def _run_scoring(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# POST /api/scoring — calcul initial
+# POST /scoring — calcul initial
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.post(
-    "/api/scoring",
+    "/scoring",
     response_model=ScoreResponse,
     status_code=status.HTTP_200_OK,
     summary="Calcul du score LBC/FT initial",
@@ -301,11 +301,11 @@ async def create_scoring(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# POST /api/scoring/rescore — recalcul manuel
+# POST /scoring/rescore — recalcul manuel
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.post(
-    "/api/scoring/rescore",
+    "/scoring/rescore",
     response_model=ScoreResponse,
     status_code=status.HTTP_200_OK,
     summary="Recalcul manuel du score LBC/FT",
@@ -330,7 +330,7 @@ async def rescore_customer(
     """
     Recalcule le score LBC/FT d'un client à la demande d'un **compliance officer**.
 
-    Identique à `POST /api/scoring` sauf que si une alerte `SCORE_ELEVE` est
+    Identique à `POST /scoring` sauf que si une alerte `SCORE_ELEVE` est
     déjà ouverte pour ce client, aucun doublon n'est créé.
 
     - **customer_id** : UUID du client à rescorer (obligatoire).
@@ -346,11 +346,11 @@ async def rescore_customer(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# GET /api/scores/{score_id} — détails d'un score
+# GET /scores/{score_id} — détails d'un score
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get(
-    "/api/scores/{score_id}",
+    "/scores/{score_id}",
     response_model=ScoreResponse,
     status_code=status.HTTP_200_OK,
     summary="Détails d'un score particulier",
@@ -381,11 +381,11 @@ async def get_score(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# GET /api/customers/{customer_id}/scores — historique paginé
+# GET /customers/{customer_id}/scores — historique paginé
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get(
-    "/api/customers/{customer_id}/scores",
+    "/customers/{customer_id}/scores",
     response_model=ScoreListResponse,
     status_code=status.HTTP_200_OK,
     summary="Historique des scores d'un client",
