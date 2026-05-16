@@ -33,7 +33,7 @@ def log_action(
             ip_address=resolved_ip
         )
         db.add(log)
-        db.commit()
+        db.flush()  # ← flush uniquement, le commit appartient au router
         logger.debug("Audit — user=%s action=%s client=%s", user_id, action, resolved_client_id)
     except Exception as exc:
         logger.error("Erreur journalisation audit : %s", exc)

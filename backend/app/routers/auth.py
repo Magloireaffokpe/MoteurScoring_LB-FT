@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from datetime import datetime
-
+from datetime import datetime, timezone
 from app.db.session import get_db
 from app.auth.security import verify_password, create_access_token
 from app.auth.dependencies import get_current_user
@@ -21,7 +20,7 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
     """
     user = db.query(User).filter(
         User.login == data.login,
-        User.is_active == True
+        User.is_active 
     ).first()
 
     if not user or not verify_password(data.password, user.password_hash):
@@ -31,7 +30,7 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
         )
 
     # Mise à jour dernière connexion
-    user.last_login = datetime.utcnow()
+    user.last_login = datetime.now(timezone.utc)
     db.commit()
 
     token = create_access_token({

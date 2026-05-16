@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta,timezone
 
 from app.db.session import get_db
 from app.auth.dependencies import get_current_user
@@ -43,7 +43,7 @@ def get_dashboard_stats(
         .filter(Alert.statut == "OPEN").count()
 
     # Transactions 30 derniers jours
-    since_30d = datetime.utcnow() - timedelta(days=30)
+    since_30d = datetime.now(timezone.utc) - timedelta(days=30)
     tx_count = db.query(Transaction)\
         .filter(Transaction.date_op >= since_30d).count()
     tx_total = db.query(func.sum(Transaction.montant))\
