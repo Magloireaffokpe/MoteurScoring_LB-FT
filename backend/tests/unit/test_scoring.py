@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.config import settings
 from app.models.countries import Country
 from app.models.customer_accounts import CustomerAccount
-from app.models.customer_docs import CustomerDoc
+from app.models.customer_docs import CustomerDoc  # fichier : customer_docs.py
 from app.models.customers import Customer
 from app.models.pep_list import PepEntry
 from app.models.risk_thresholds import RiskThreshold
@@ -70,21 +70,23 @@ def db(db_engine) -> Generator[Session, None, None]:
 def _seed_scoring_params(db: Session) -> None:
     """Insère les critères et seuils de scoring si absents."""
     if db.query(ScoringCriteria).count() == 0:
+        # weight est en pourcentage entier (20.00 = 20%), conformément au model
         criteria = [
-            ScoringCriteria(code="C1", name="Profil professionnel", weight=Decimal("0.20"), is_active=True),
-            ScoringCriteria(code="C2", name="Zone géographique",    weight=Decimal("0.20"), is_active=True),
-            ScoringCriteria(code="C3", name="Historique transact.", weight=Decimal("0.25"), is_active=True),
-            ScoringCriteria(code="C4", name="Ancienneté & fidél.",  weight=Decimal("0.10"), is_active=True),
-            ScoringCriteria(code="C5", name="Statut PEP",           weight=Decimal("0.15"), is_active=True),
-            ScoringCriteria(code="C6", name="Cohérence KYC",        weight=Decimal("0.10"), is_active=True),
+            ScoringCriteria(code="C1", name="Profil professionnel", weight=Decimal("20.00")),
+            ScoringCriteria(code="C2", name="Zone géographique",    weight=Decimal("20.00")),
+            ScoringCriteria(code="C3", name="Historique transact.", weight=Decimal("25.00")),
+            ScoringCriteria(code="C4", name="Ancienneté & fidél.",  weight=Decimal("10.00")),
+            ScoringCriteria(code="C5", name="Statut PEP",           weight=Decimal("15.00")),
+            ScoringCriteria(code="C6", name="Cohérence KYC",        weight=Decimal("10.00")),
         ]
         db.add_all(criteria)
 
     if db.query(RiskThreshold).count() == 0:
+        # Champs du model : score_min, score_max, action (pas min_score/max_score/required_action)
         thresholds = [
-            RiskThreshold(category="FAIBLE", min_score=0,  max_score=33, required_action="Aucune action"),
-            RiskThreshold(category="MOYEN",  min_score=34, max_score=66, required_action="Surveillance renforcée"),
-            RiskThreshold(category="ÉLEVÉ",  min_score=67, max_score=100, required_action="Déclaration CENTIF"),
+            RiskThreshold(category="FAIBLE", score_min=0,  score_max=33,  action="Aucune action"),
+            RiskThreshold(category="MOYEN",  score_min=34, score_max=66,  action="Surveillance renforcée"),
+            RiskThreshold(category="ELEVE",  score_min=67, score_max=100, action="Déclaration CENTIF"),
         ]
         db.add_all(thresholds)
 

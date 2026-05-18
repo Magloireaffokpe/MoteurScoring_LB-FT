@@ -41,7 +41,7 @@ from reportlab.platypus import (
     Table,
     TableStyle,
 )
-from reportlab.platypus.flowables import Drawing
+from reportlab.graphics.shapes import Drawing
 from reportlab.graphics.shapes import Rect, String, Line, Group
 from reportlab.graphics import renderPDF
 from sqlalchemy.orm import Session
@@ -451,7 +451,8 @@ def generate_customer_pdf(
     buffer  = io.BytesIO()
     styles  = _build_styles()
     export_date = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M") + " UTC"
-    agent_name  = getattr(agent, "full_name", None) or getattr(agent, "login", "Système")
+    # FIX: User n'a pas de champ full_name — on utilise login (seul champ disponible)
+    agent_name = agent.login
 
     doc = SimpleDocTemplate(
         buffer,
@@ -674,6 +675,8 @@ def generate_customer_pdf(
     if open_alerts:
         a_rows = []
         for a in open_alerts:
+            # FIX: champs corrects du modèle Alert
+            # type_alerte / date_creation / statut / sar_declare
             a_rows.append([
                 a.alert_type or "—",
                 _fmt_datetime(a.created_at),
@@ -913,7 +916,8 @@ def generate_sar_pdf(
     buffer     = io.BytesIO()
     styles     = _build_styles()
     export_date = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M") + " UTC"
-    agent_name  = getattr(agent, "full_name", None) or getattr(agent, "login", "Système")
+    # FIX: User n'a pas de champ full_name — on utilise login (seul champ disponible)
+    agent_name = agent.login
 
     doc = SimpleDocTemplate(
         buffer,
@@ -1054,13 +1058,24 @@ def generate_sar_pdf(
     elements.append(_section_table("3. DÉTAIL DE L'ALERTE", bg=C_RED))
     elements.append(Spacer(1, 4))
 
+    # FIX: champs corrects du modèle Alert :
+    # type_alerte / statut / sar_declare / date_creation / decision
     alert_data = [
+<<<<<<< Updated upstream
         ["Type d'alerte",     alert.alert_type or "—",
          "Niveau risque",     alert.risk_level or "—"],
         ["Date détection",    _fmt_datetime(alert.created_at),
          "Statut",            alert.status or "—"],
         ["Description",       Paragraph(alert.description or "—",
                                         styles["body"]), "", ""],
+=======
+        ["Type d'alerte",  alert.type_alerte or "—",
+         "Statut",         alert.statut or "—"],
+        ["Date détection", _fmt_datetime(alert.date_creation),
+         "SAR déclaré",    "Oui" if alert.sar_declare else "Non"],
+        ["Décision/Motif", Paragraph(alert.decision or "—",
+                                     styles["body"]), "", ""],
+>>>>>>> Stashed changes
     ]
     alert_t = Table(alert_data, colWidths=[3.5 * cm, 5.5 * cm, 3 * cm, 5 * cm])
     alert_t.setStyle(TableStyle([

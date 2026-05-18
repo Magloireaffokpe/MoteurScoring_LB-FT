@@ -47,19 +47,27 @@ def _check_role(user: User) -> None:
     """
     Vérifie que l'utilisateur possède un rôle autorisé pour les exports.
 
+    Le modèle User expose `role` comme une relation SQLAlchemy vers UserRole.
+    On lit donc `user.role.name` pour obtenir le nom du rôle.
+
     :raises HTTPException 403: si le rôle est insuffisant.
     """
-    role = getattr(user, "role", None) or ""
-    # Compatibilité avec les deux structures possibles (role string ou role_id)
-    if hasattr(user, "role") and isinstance(user.role, str):
-        role = user.role
-    elif hasattr(user, "user_role") and user.user_role:
-        role = getattr(user.user_role, "name", "")
+    # FIX: user.role est une relation vers l'objet UserRole (pas une string).
+    # user.role_id est la FK, user.role est l'objet chargé par SQLAlchemy.
+    role_name = ""
+    user_role = getattr(user, "role", None)
+    if user_role is not None:
+        if isinstance(user_role, str):
+            # Cas de compatibilité si jamais role est déjà une string
+            role_name = user_role
+        else:
+            # Cas normal : user.role est un objet UserRole → on lit .name
+            role_name = getattr(user_role, "name", "")
 
-    if role not in _ALLOWED_ROLES:
+    if role_name not in _ALLOWED_ROLES:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Rôle '{role}' insuffisant. Requis : compliance_officer ou admin.",
+            detail=f"Rôle '{role_name}' insuffisant. Requis : compliance_officer ou admin.",
         )
 
 

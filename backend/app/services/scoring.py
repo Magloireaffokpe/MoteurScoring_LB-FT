@@ -19,6 +19,10 @@ Changelog v1.2 :
                                ratio revenus (reçoit transactions + revenus)
   [Fix 4] datetime.utcnow()  : remplacé par datetime.now(timezone.utc)
   [Fix 5] Sécurités null     : or [] sur accounts et documents partout
+  [Fix 6] Timezone naive     : Transaction.date_op est un Column(DateTime) sans
+                               timezone en base — le cutoff est désormais strippé
+                               (.replace(tzinfo=None)) avant la requête SQL pour
+                               éviter la DataError PostgreSQL (aware vs naive).
 """
 
 from __future__ import annotations
@@ -63,6 +67,17 @@ _SMURFING_ROUND_STEP   = 10_000    # les montants suspects sont multiples de 10k
 _SMURFING_MIN_COUNT    = 3         # nb minimum de tx suspects pour déclencher
 _SMURFING_WINDOW_DAYS  = 7         # [Fix 3] fenêtre de concentration temporelle
 _SMURFING_REVENUE_MULT = 3.0       # [Fix 3] ratio min total_suspect / revenu_mensuel
+
+
+def _naive_utc_now() -> datetime:
+    """
+    Retourne l'heure UTC actuelle en datetime NAÏF (sans tzinfo).
+
+    Transaction.date_op est un Column(DateTime) sans timezone en base PostgreSQL.
+    Comparer un datetime aware avec une colonne naive provoque une DataError.
+    On strip systématiquement tzinfo avant toute requête SQL.  [Fix 6]
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -219,10 +234,8 @@ class ScoringEngine:
         # Incohérence revenus déclarés / niveau de risque
         rev = float(customer.revenus_declares or 0)
         if rev == 0 and risk not in ("HIGH", ""):
-            # Revenu nul pour un salarié ou artisan → suspect
             note = min(100.0, note + 10.0)
         elif rev > 5_000_000 and risk == "LOW":
-            # Revenus très élevés incompatibles avec un emploi formel ordinaire
             note = min(100.0, note + 15.0)
 
         logger.debug("C1=%.1f (profession_risk=%s)", note, risk)
@@ -264,7 +277,7 @@ class ScoringEngine:
             elif country.is_border:
                 note = max(note, 55.0)
             elif country.is_uemoa:
-                note = min(note, 40.0)   # UEMOA : contexte réglementé, plafonne à 40
+                note = min(note, 40.0)
 
         logger.debug("C2=%.1f", note)
         return round(note, 2)
@@ -283,8 +296,9 @@ class ScoringEngine:
           51-80 → Pics fréquents, retraits cash répétés, fréquence anormale
           81-100 → Smurfing, virements inexpliqués vers pays à risque
         """
-        # [Fix 4] datetime.now(timezone.utc) au lieu de datetime.utcnow()
-        cutoff      = datetime.now(timezone.utc) - timedelta(days=_TX_WINDOW_DAYS)
+        # [Fix 6] _naive_utc_now() : Transaction.date_op est Column(DateTime) naïf —
+        # comparer avec un datetime aware provoque une DataError PostgreSQL.
+        cutoff      = _naive_utc_now() - timedelta(days=_TX_WINDOW_DAYS)
         # [Fix 5] or [] pour éviter les AttributeError si accounts est None
         account_ids = [acc.id for acc in (customer.accounts or [])]
 
@@ -364,12 +378,6 @@ class ScoringEngine:
              _SMURFING_REVENUE_MULT × les revenus mensuels déclarés (ratio ≥ 3×).
              → Cette condition est ignorée si revenus_mensuel = 0 (non renseigné).
 
-        Exemple de faux positif éliminé :
-          4 dépôts de 150 000 XOF espacés de 20 jours, revenus 300 000/mois.
-          → Condition 1 ✓ (150k % 10k == 0 et < 500k), mais :
-          → Condition 2 ✗ (spacés de 20j, pas concentrés sur 7j)
-          → non détecté → C3 reste faible ✅
-
         :param transactions: liste d'objets Transaction de la fenêtre 90j.
         :param revenus_mensuel: revenus déclarés en XOF (0 = non renseigné).
         :returns: True si smurfing probable.
@@ -391,11 +399,10 @@ class ScoringEngine:
             return False
 
         # ── Étape 2 : vérification de la concentration temporelle ───────────
-        # Les transactions suspects doivent être groupées sur ≤ 7 jours.
         dates = []
         for tx in suspects:
             d = tx.date_op
-            # Normaliser en datetime naive UTC pour la comparaison
+            # Normaliser en datetime naive pour la comparaison (cohérence [Fix 6])
             if d is not None and hasattr(d, "tzinfo") and d.tzinfo is not None:
                 d = d.replace(tzinfo=None)
             if d is not None:
@@ -404,12 +411,11 @@ class ScoringEngine:
         if len(dates) < _SMURFING_MIN_COUNT:
             return False
 
-        date_min = min(dates)
-        date_max = max(dates)
+        date_min  = min(dates)
+        date_max  = max(dates)
         span_days = (date_max - date_min).days
 
         if span_days > _SMURFING_WINDOW_DAYS:
-            # Transactions étalées dans le temps → pas de smurfing
             logger.debug(
                 "Smurfing écarté : %d tx suspectes sur %d jours (> %d j)",
                 len(suspects), span_days, _SMURFING_WINDOW_DAYS,
@@ -417,8 +423,6 @@ class ScoringEngine:
             return False
 
         # ── Étape 3 : ratio total suspects / revenus mensuels ───────────────
-        # Si les revenus sont renseignés, le total doit dépasser 3× le revenu mensuel.
-        # Sinon (revenus = 0), on passe la condition (pas d'info disponible).
         if revenus_mensuel > 0:
             total_suspects = sum(float(tx.montant) for tx in suspects)
             if total_suspects < revenus_mensuel * _SMURFING_REVENUE_MULT:
@@ -460,19 +464,18 @@ class ScoringEngine:
           81-100 → Client récent avec comportement inhabituel dès l'ouverture
         """
         if not customer.date_creation:
-            return 60.0   # date inconnue → on reste prudent
+            return 60.0
 
         since = customer.date_creation
-        # Normaliser : date_creation peut être datetime ou date selon ORM
         if isinstance(since, datetime):
             since = since.date()
 
         delta = (date.today() - since).days
 
-        if   delta > 3 * 365: note = 10.0   # > 3 ans → relation établie
-        elif delta > 365:     note = 35.0   # 1 à 3 ans
-        elif delta > 180:     note = 60.0   # 6 mois à 1 an
-        else:                 note = 75.0   # < 6 mois → récent
+        if   delta > 3 * 365: note = 10.0
+        elif delta > 365:     note = 35.0
+        elif delta > 180:     note = 60.0
+        else:                 note = 75.0
 
         logger.debug("C4=%.1f (ancienneté=%d jours)", note, delta)
         return round(note, 2)
@@ -490,12 +493,10 @@ class ScoringEngine:
           50  → Entourage proche d'une PEP (famille, associé)
           100 → PEP avérée (fonctionnaire, élu, militaire de haut rang)
         """
-        # 1. Flag direct sur le client
         if customer.statut_pep:
             logger.debug("C5=100 (statut_pep=True)")
             return 100.0
 
-        # 2. Correspondance dans la liste PEP active (insensible à la casse)
         match = (
             self.db.query(PepEntry)
             .filter(
@@ -534,7 +535,7 @@ class ScoringEngine:
         docs = customer.documents or []
 
         if not docs:
-            note = max(note, 85.0)   # Aucun document → dossier vide
+            note = max(note, 85.0)
         else:
             today   = date.today()
             bientot = today + timedelta(days=60)
@@ -587,8 +588,8 @@ class ScoringEngine:
         if not account_ids:
             return 0.0
 
-        # [Fix 4] datetime.now(timezone.utc)
-        cutoff = datetime.now(timezone.utc) - timedelta(days=90)
+        # [Fix 6] _naive_utc_now() : même raison que dans _score_c3
+        cutoff = _naive_utc_now() - timedelta(days=90)
         txs = (
             self.db.query(Transaction)
             .filter(
@@ -600,7 +601,6 @@ class ScoringEngine:
         if not txs:
             return 0.0
 
-        # Division par 3 : fenêtre de 90j = 3 mois
         return sum(float(tx.montant) for tx in txs) / 3
 
     # ──────────────────────────────────────────────────────────────────────
@@ -615,7 +615,6 @@ class ScoringEngine:
           La table risk_thresholds stocke 'ELEVE' (sans accent, seed Marcos),
           mais le contrat API v1.0 exige 'ÉLEVÉ' (avec accent). On normalise ici.
         """
-        # Table de normalisation des catégories (DB → API)
         _NORMALIZE = {
             "ELEVE":  "ÉLEVÉ",
             "ÉLEVÉ":  "ÉLEVÉ",

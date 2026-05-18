@@ -15,6 +15,16 @@ Prérequis :
   - DB de test accessible (voir conftest.py)
   - Tables migrées (alembic upgrade head)
   - Un utilisateur admin créé dans la DB de test
+
+Corrections appliquées (alignement models) :
+  [Fix-2] Transaction importé en tête de fichier (évite NameError)
+  [Fix-3] ScoringCriteria : suppression is_active (inexistant), weight en % entier
+  [Fix-4] RiskThreshold : min_score/max_score/required_action → score_min/score_max/action
+           category 'ÉLEVÉ' → 'ELEVE' (convention DB sans accent)
+  [Fix-5] User : suppression full_name/email (inexistants), hashed_password → password_hash,
+           role='admin' → role_id récupéré depuis user_roles
+  [Fix-6] Alert queries : customer_id→client_id, alert_type→type_alerte, status→statut,
+           suppression Alert.risk_level (inexistant), created_at→date_creation
 """
 
 from __future__ import annotations
@@ -40,7 +50,10 @@ from app.models.risk_thresholds import RiskThreshold
 from app.models.risk_zones import RiskZone
 from app.models.scores import Score
 from app.models.scoring_criteria import ScoringCriteria
+from app.models.transactions import Transaction  # [Fix-2] import déplacé en tête de fichier
 from app.models.users import User
+from app.models.user_roles import UserRole
+
 
 # ---------------------------------------------------------------------------
 # Fixtures DB & Client
@@ -89,21 +102,24 @@ def auth_headers(admin_token: str) -> dict[str, str]:
 def _seed_all(db: Session) -> None:
     """Insère les données de référence nécessaires aux tests."""
     if db.query(ScoringCriteria).count() == 0:
+        # [Fix-3] weight en pourcentage entier (20.00 = 20%), is_active supprimé
         criteria = [
-            ScoringCriteria(code="C1", name="Profil professionnel", weight=Decimal("0.20"), is_active=True),
-            ScoringCriteria(code="C2", name="Zone géographique",    weight=Decimal("0.20"), is_active=True),
-            ScoringCriteria(code="C3", name="Historique transact.", weight=Decimal("0.25"), is_active=True),
-            ScoringCriteria(code="C4", name="Ancienneté & fidél.",  weight=Decimal("0.10"), is_active=True),
-            ScoringCriteria(code="C5", name="Statut PEP",           weight=Decimal("0.15"), is_active=True),
-            ScoringCriteria(code="C6", name="Cohérence KYC",        weight=Decimal("0.10"), is_active=True),
+            ScoringCriteria(code="C1", name="Profil professionnel", weight=Decimal("20.00")),
+            ScoringCriteria(code="C2", name="Zone géographique",    weight=Decimal("20.00")),
+            ScoringCriteria(code="C3", name="Historique transact.", weight=Decimal("25.00")),
+            ScoringCriteria(code="C4", name="Ancienneté & fidél.",  weight=Decimal("10.00")),
+            ScoringCriteria(code="C5", name="Statut PEP",           weight=Decimal("15.00")),
+            ScoringCriteria(code="C6", name="Cohérence KYC",        weight=Decimal("10.00")),
         ]
         db.add_all(criteria)
 
     if db.query(RiskThreshold).count() == 0:
+        # [Fix-4] score_min/score_max/action (pas min_score/max_score/required_action)
+        #         'ELEVE' sans accent (convention DB — normalisé en 'ÉLEVÉ' par le moteur)
         thresholds = [
-            RiskThreshold(category="FAIBLE", min_score=0,  max_score=33),
-            RiskThreshold(category="MOYEN",  min_score=34, max_score=66),
-            RiskThreshold(category="ÉLEVÉ",  min_score=67, max_score=100),
+            RiskThreshold(category="FAIBLE", score_min=0,  score_max=33,  action="Aucune action"),
+            RiskThreshold(category="MOYEN",  score_min=34, score_max=66,  action="Surveillance renforcée"),
+            RiskThreshold(category="ELEVE",  score_min=67, score_max=100, action="Déclaration CENTIF"),
         ]
         db.add_all(thresholds)
 
@@ -114,12 +130,19 @@ def _get_or_create_test_user(db: Session) -> User:
     """Retourne ou crée un utilisateur admin pour les tests."""
     user = db.query(User).filter(User.login == "test_admin_scoring").first()
     if not user:
+        # [Fix-5] Récupérer le role_id admin depuis user_roles (FK Integer obligatoire)
+        #         full_name et email n'existent pas dans le model User
+        #         hashed_password → password_hash
+        role = db.query(UserRole).filter(UserRole.name == "admin").first()
+        if not role:
+            role = UserRole(name="admin", permissions={})
+            db.add(role)
+            db.flush()
+
         user = User(
             login="test_admin_scoring",
-            full_name="Admin Test Scoring",
-            email=f"admin_scoring_{uuid.uuid4().hex[:6]}@test.bj",
-            hashed_password="$2b$12$fakehashfortesting",
-            role="admin",
+            password_hash="$2b$12$fakehashfortesting",  # [Fix-5] password_hash (pas hashed_password)
+            role_id=role.id,                             # [Fix-5] role_id Integer FK (pas role='admin')
             is_active=True,
         )
         db.add(user)
@@ -236,9 +259,9 @@ def _create_high_risk_customer(db: Session) -> Customer:
     db.add(acc)
     db.flush()
 
-    # Transactions smurfing
+    # Transactions smurfing — [Fix-2] Transaction utilisable ici car importé en tête
     for i in range(6):
-        tx = Transaction_(
+        tx = Transaction(
             compte_id=acc.id,
             montant=Decimal("450000"),
             devise="XOF",
@@ -251,10 +274,6 @@ def _create_high_risk_customer(db: Session) -> Customer:
 
     db.commit()
     return customer
-
-
-# Import Transaction avec alias pour éviter conflit de noms
-from app.models.transactions import Transaction as Transaction_
 
 
 # ---------------------------------------------------------------------------
@@ -325,7 +344,6 @@ class TestFormatReponse:
         assert response.status_code == 200, response.text
         data = response.json()
 
-        # Champs obligatoires du contrat
         assert "id" in data
         assert "customer_id" in data
         assert "global_score" in data
@@ -506,16 +524,17 @@ class TestAlerteAutomatique:
             headers=auth_headers,
         )
 
-        # Si le score est effectivement ≥ 67, vérifier l'alerte
         if response.status_code == 200:
             data = response.json()
             if data["global_score"] >= 67:
+                # [Fix-6] client_id (pas customer_id), type_alerte (pas alert_type),
+                #         statut (pas status), suppression risk_level (inexistant)
                 alerts = (
                     db_session.query(Alert)
                     .filter(
-                        Alert.customer_id == customer.id,
-                        Alert.alert_type == "SCORE_ELEVE",
-                        Alert.status == "OPEN",
+                        Alert.client_id == customer.id,
+                        Alert.type_alerte == "SCORE_ELEVE",
+                        Alert.statut == "OPEN",
                     )
                     .all()
                 )
@@ -541,12 +560,13 @@ class TestAlerteAutomatique:
         if response.status_code == 200:
             data = response.json()
             if data["global_score"] < 67:
+                # [Fix-6] client_id, type_alerte, statut
                 alerts = (
                     db_session.query(Alert)
                     .filter(
-                        Alert.customer_id == customer.id,
-                        Alert.alert_type == "SCORE_ELEVE",
-                        Alert.status == "OPEN",
+                        Alert.client_id == customer.id,
+                        Alert.type_alerte == "SCORE_ELEVE",
+                        Alert.statut == "OPEN",
                     )
                     .all()
                 )
@@ -599,7 +619,6 @@ class TestRescore:
 
         assert r2.status_code == 200
         d1, d2 = r1.json(), r2.json()
-
         assert set(d1.keys()) == set(d2.keys()), "Les clés doivent être identiques"
 
     def test_rescore_marque_ancien_score_non_courant(
@@ -649,16 +668,16 @@ class TestRescore:
                 headers=auth_headers,
             )
 
+        # [Fix-6] client_id, type_alerte, statut
         alerts = (
             db_session.query(Alert)
             .filter(
-                Alert.customer_id == customer.id,
-                Alert.alert_type == "SCORE_ELEVE",
-                Alert.status == "OPEN",
+                Alert.client_id == customer.id,
+                Alert.type_alerte == "SCORE_ELEVE",
+                Alert.statut == "OPEN",
             )
             .all()
         )
-        # Au maximum 1 alerte ouverte
         assert len(alerts) <= 1, (
             f"Doublon d'alerte détecté : {len(alerts)} alertes SCORE_ELEVE ouvertes"
         )
@@ -679,7 +698,6 @@ class TestHistoriqueScores:
         """GET /api/customers/{id}/scores → structure paginée avec items et total."""
         customer = _create_low_risk_customer(db_session)
 
-        # Créer quelques scores
         for _ in range(2):
             test_client.post(
                 "/api/scoring",
