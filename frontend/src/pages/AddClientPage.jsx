@@ -136,7 +136,7 @@ function Step1({ data, errors, patch }) {
         error={errors.prenom}
         onChange={(e) => patch({ prenom: e.target.value })}
         placeholder="ex : Koffi"
-        helper="Synchronisé avec Customer.prenom"
+        helper="Customer.prenom — String(100) not null"
       />
       <FormInput
         label="Nom de famille"
@@ -146,6 +146,7 @@ function Step1({ data, errors, patch }) {
         error={errors.nom}
         onChange={(e) => patch({ nom: e.target.value.toUpperCase() })}
         placeholder="ex : BIAOU"
+        helper="Customer.nom — String(100) not null"
       />
       <FormInput
         label="Date de naissance"
@@ -162,7 +163,7 @@ function Step1({ data, errors, patch }) {
         error={errors.phone}
         onChange={(e) => patch({ phone: e.target.value })}
         placeholder="+22966123456"
-        helper="Customer.phone — unique, String(20)"
+        helper="Customer.phone — unique, String(20) nullable"
       />
       <FormInput
         label="Adresse email"
@@ -173,7 +174,7 @@ function Step1({ data, errors, patch }) {
         onChange={(e) => patch({ email: e.target.value })}
         placeholder="koffi@example.bj"
         className="sm:col-span-2"
-        helper="Customer.email — unique, String(150)"
+        helper="Customer.email — unique, String(150) nullable"
       />
 
       {/* Profession */}
@@ -185,7 +186,7 @@ function Step1({ data, errors, patch }) {
         error={errors.profession_code}
         onChange={(e) => handleProfessionChange(e.target.value)}
         className="sm:col-span-2"
-        helper="Synchronisé avec PROFESSIONS de generate_fake_data.py"
+        helper="Customer.profession_code — String(50) nullable"
       >
         <option value="">— Sélectionner une profession —</option>
         {PROFESSIONS.map((p) => (
@@ -250,7 +251,7 @@ function Step2({ data, errors, patch, countries, zones }) {
         value={data.pays}
         error={errors.pays}
         onChange={(e) => patch({ pays: e.target.value })}
-        helper="Customer.pays — FK countries.id"
+        helper="Customer.pays — FK countries.id nullable"
       >
         <option value="">— Sélectionner un pays —</option>
         {countries.map((c) => (
@@ -267,7 +268,7 @@ function Step2({ data, errors, patch, countries, zones }) {
         name="zone_geo"
         value={data.zone_geo}
         onChange={(e) => patch({ zone_geo: e.target.value })}
-        helper="Customer.zone_geo — FK risk_zones.id"
+        helper="Customer.zone_geo — FK risk_zones.id nullable"
       >
         <option value="">— Sélectionner une zone —</option>
         {zones.map((z) => (
@@ -304,7 +305,7 @@ function Step2({ data, errors, patch, countries, zones }) {
         error={errors.city}
         onChange={(e) => patch({ city: e.target.value })}
         placeholder="Cotonou"
-        helper="Customer.city — String(100)"
+        helper="Customer.city — String(100) nullable"
       />
       <FormInput
         label="Région / Département"
@@ -313,7 +314,7 @@ function Step2({ data, errors, patch, countries, zones }) {
         error={errors.region}
         onChange={(e) => patch({ region: e.target.value })}
         placeholder="Littoral"
-        helper="Customer.region — String(100)"
+        helper="Customer.region — String(100) nullable"
       />
 
       {/* Statut PEP — Customer.statut_pep Boolean */}
@@ -321,7 +322,7 @@ function Step2({ data, errors, patch, countries, zones }) {
         <p className="text-sm font-medium text-[#6B7280] mb-2">
           Statut PEP (Personne Exposée Politiquement)
           <span className="text-[#9CA3AF] text-xs ml-2 font-normal">
-            Customer.statut_pep — Boolean
+            Customer.statut_pep — Boolean default false
           </span>
         </p>
         <div className="flex gap-3">
@@ -374,7 +375,7 @@ function Step2({ data, errors, patch, countries, zones }) {
             name="type_doc"
             value={data.type_doc}
             onChange={(e) => patch({ type_doc: e.target.value })}
-            helper="CustomerDoc.type_doc"
+            helper="CustomerDoc.type_doc — String(50) not null"
           >
             {TYPES_DOC.map((t) => (
               <option key={t} value={t}>
@@ -389,7 +390,7 @@ function Step2({ data, errors, patch, countries, zones }) {
             error={errors.numero}
             onChange={(e) => patch({ numero: e.target.value })}
             placeholder="B123456789"
-            helper="CustomerDoc.numero — String(100)"
+            helper="CustomerDoc.numero — String(100) nullable"
           />
           <FormInput
             label="Date d'expiration"
@@ -398,7 +399,7 @@ function Step2({ data, errors, patch, countries, zones }) {
             value={data.date_expiration}
             error={errors.date_expiration}
             onChange={(e) => patch({ date_expiration: e.target.value })}
-            helper="CustomerDoc.date_expiration — Date"
+            helper="CustomerDoc.date_expiration — Date nullable"
           />
         </div>
       </div>
@@ -572,27 +573,22 @@ export default function AddClientPage() {
       // Le backend (Marcos) mappe les noms de champs (ex: first_name → prenom)
       // selon la convention définie dans le contrat API v1.0
       const payload = {
-        // Champs de identité (noms API contrat)
-        first_name: data.prenom || undefined,
-        last_name: data.nom || undefined,
-        date_of_birth: data.date_naissance || null,
+        nom: data.nom || undefined,
+        prenom: data.prenom || undefined,
+        date_naissance: data.date_naissance || null,
         phone: data.phone || null,
         email: data.email || null,
-        // Profession
         profession_code: data.profession_code || null,
         profession_name: data.profession_name || null,
-        profession_risk_category: data.profession_risk || null,
-        monthly_income: data.revenus_declares
+        profession_risk: data.profession_risk || null,
+        revenus_declares: data.revenus_declares
           ? Number(data.revenus_declares)
-          : null,
-        // Localisation
-        nationality_id: data.pays ? Number(data.pays) : null,
-        zone_geo_classification: data.zone_geo
-          ? zones.find((z) => String(z.id) === String(data.zone_geo))?.name ||
-            null
           : null,
         city: data.city || null,
         region: data.region || null,
+        zone_geo: data.zone_geo ? Number(data.zone_geo) : null,
+        pays: data.pays ? Number(data.pays) : null,
+        statut_pep: data.statut_pep || false,
       };
 
       // 1. Créer le client

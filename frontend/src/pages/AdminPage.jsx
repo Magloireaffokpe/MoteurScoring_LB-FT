@@ -122,61 +122,63 @@ function CriteriaSection() {
       <div className="space-y-3">
         {criteria.map((c) => (
           <Card key={c.id}>
-              <div className="flex flex-col sm:flex-row sm:items-center gap-4 w-full">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-3xl font-bold font-display text-[#1E3A8A]">
-                      {c.code}
-                    </span>
-                    <span className="text-base font-medium text-[#111827] font-sans truncate">
-                      {CRITERA_DESC[c.code] || c.name}
-                    </span>
-                  </div>
-                  <div className="h-2 bg-[#F3F4F6] rounded-full overflow-hidden w-full">
-                    <div
-                      className="h-full bg-[#1E3A8A] rounded-full transition-all duration-500"
-                      style={{ width: `${Math.min(100, weights[c.id] || 0)}%` }}
-                    />
-                  </div>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4 w-full">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-3xl font-bold font-display text-[#1E3A8A]">
+                    {c.code}
+                  </span>
+                  <span className="text-base font-medium text-[#111827] font-sans truncate">
+                    {CRITERA_DESC[c.code] || c.name}
+                  </span>
                 </div>
-                <div className="flex flex-wrap sm:flex-nowrap items-center justify-between sm:justify-end gap-3 flex-shrink-0 pt-2 sm:pt-0 border-t sm:border-0 border-[#F3F4F6]">
-                  <input
-                    type="range"
-                    min="0"
-                    max="50"
-                    step="1"
-                    value={weights[c.id] || 0}
-                    onChange={(e) =>
-                      setWeights((w) => ({ ...w, [c.id]: e.target.value }))
-                    }
-                    className="w-full sm:flex-1 sm:w-24 accent-[#1E3A8A]"
+                <div className="h-2 bg-[#F3F4F6] rounded-full overflow-hidden w-full">
+                  <div
+                    className="h-full bg-[#1E3A8A] rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min(100, weights[c.id] || 0)}%` }}
                   />
-                  <div className="flex flex-1 sm:flex-none items-center justify-end gap-2">
-                    <div className="flex items-center gap-1">
-                      <input
-                        type="number"
-                        min="0"
-                        max="50"
-                        value={weights[c.id] || 0}
-                        onChange={(e) =>
-                          setWeights((w) => ({ ...w, [c.id]: e.target.value }))
-                        }
-                        className="w-14 px-2 py-1.5 rounded-lg border border-[#E5E7EB] text-sm text-center
-                                   font-bold font-mono focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]/30"
-                      />
-                      <span className="text-xs font-normal font-sans text-[#6B7280]">%</span>
-                    </div>
-                    <Button
-                      size="sm"
-                      loading={saving === c.id}
-                      onClick={() => handleSave(c)}
-                      className="flex-shrink-0"
-                    >
-                      <Save className="w-3 h-3" />
-                    </Button>
-                  </div>
                 </div>
               </div>
+              <div className="flex flex-wrap sm:flex-nowrap items-center justify-between sm:justify-end gap-3 flex-shrink-0 pt-2 sm:pt-0 border-t sm:border-0 border-[#F3F4F6]">
+                <input
+                  type="range"
+                  min="0"
+                  max="50"
+                  step="1"
+                  value={weights[c.id] || 0}
+                  onChange={(e) =>
+                    setWeights((w) => ({ ...w, [c.id]: e.target.value }))
+                  }
+                  className="w-full sm:flex-1 sm:w-24 accent-[#1E3A8A]"
+                />
+                <div className="flex flex-1 sm:flex-none items-center justify-end gap-2">
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="0"
+                      max="50"
+                      value={weights[c.id] || 0}
+                      onChange={(e) =>
+                        setWeights((w) => ({ ...w, [c.id]: e.target.value }))
+                      }
+                      className="w-14 px-2 py-1.5 rounded-lg border border-[#E5E7EB] text-sm text-center
+                                   font-bold font-mono focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]/30"
+                    />
+                    <span className="text-xs font-normal font-sans text-[#6B7280]">
+                      %
+                    </span>
+                  </div>
+                  <Button
+                    size="sm"
+                    loading={saving === c.id}
+                    onClick={() => handleSave(c)}
+                    className="flex-shrink-0"
+                  >
+                    <Save className="w-3 h-3" />
+                  </Button>
+                </div>
+              </div>
+            </div>
           </Card>
         ))}
       </div>
@@ -309,9 +311,9 @@ function ThresholdsSection() {
                 }))
               }
             />
-            {t.required_action && (
+            {t.action && (
               <p className="text-xs font-normal font-sans text-[#6B7280] border-t border-[#F3F4F6] pt-3 leading-relaxed">
-                {t.required_action}
+                {t.action}
               </p>
             )}
             <Button
@@ -536,7 +538,7 @@ function PepSection() {
               error={errors.prenom}
               onChange={(e) => patchForm("prenom", e.target.value)}
               placeholder="Abdoulaye"
-              helper="PepEntry.prenom — String(100)"
+              helper="PepEntry.prenom — String(100) not null"
             />
             <FormInput
               label="Nom de famille"
@@ -545,7 +547,7 @@ function PepSection() {
               error={errors.nom}
               onChange={(e) => patchForm("nom", e.target.value.toUpperCase())}
               placeholder="BIO TCHANE"
-              helper="PepEntry.nom — String(100)"
+              helper="PepEntry.nom — String(100) not null"
             />
             <FormInput
               label="Fonction"
@@ -554,13 +556,13 @@ function PepSection() {
               onChange={(e) => patchForm("fonction", e.target.value)}
               placeholder="Ministre de l'Économie"
               className="sm:col-span-2"
-              helper="PepEntry.fonction — String(200)"
+              helper="PepEntry.fonction — String(200) nullable"
             />
             <FormSelect
               label="Pays"
               value={form.pays}
               onChange={(e) => patchForm("pays", e.target.value)}
-              helper="PepEntry.pays — FK countries.id"
+              helper="PepEntry.pays — FK countries.id nullable"
             >
               <option value="">— Sélectionner un pays —</option>
               {countries.map((c) => (
@@ -573,7 +575,7 @@ function PepSection() {
               label="Source"
               value={form.source}
               onChange={(e) => patchForm("source", e.target.value)}
-              helper="PepEntry.source : CENTIF | GIABA | ONU | FATF"
+              helper="PepEntry.source — String(100) nullable"
             >
               {PEP_SOURCES.map((s) => (
                 <option key={s} value={s}>
@@ -594,7 +596,7 @@ function PepSection() {
               value={form.date_fin}
               error={errors.date_fin}
               onChange={(e) => patchForm("date_fin", e.target.value)}
-              helper="PepEntry.date_fin — NULL = toujours en fonction"
+              helper="PepEntry.date_fin — Date nullable (NULL = toujours en fonction)"
             />
           </div>
           <Button type="submit" loading={adding} className="mt-4">
@@ -661,16 +663,16 @@ function AuditSection() {
         </span>
       ),
     },
-    { key: "resource_type", label: "Ressource" },
     {
-      key: "resource_id",
-      label: "ID ressource",
+      key: "client_id",
+      label: "Client ID",
       render: (v) => (
         <span className="font-mono text-[11px] text-[#9CA3AF]">
-          {v?.slice(0, 12)}…
+          {v ? v.slice(0, 12) + "…" : "—"}
         </span>
       ),
     },
+
     { key: "timestamp", label: "Date/Heure", render: (v) => formatDatetime(v) },
     {
       key: "ip_address",

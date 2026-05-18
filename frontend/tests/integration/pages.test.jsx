@@ -119,7 +119,10 @@ function renderWithProviders(
   }
 
   return render(
-    <MemoryRouter initialEntries={initialEntries}>
+    <MemoryRouter
+      initialEntries={initialEntries}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
       <AuthProvider>
         <AppProvider>
           {ui}
@@ -185,23 +188,23 @@ const MOCK_ALERTS_DATA = {
   items: [
     {
       id: "a1",
-      customer_id: "c3",
+      client_id: "c3",
       customer_name: "Fatima OUEDRAOGO",
-      alert_type: "SCORE_ELEVE",
+      type_alerte: "SCORE_ELEVE",
       risk_level: "HIGH",
-      status: "OPEN",
-      created_at: "2026-05-01T08:00:00Z",
-      sar_filed: false,
+      statut: "OPEN",
+      date_creation: "2026-05-01T08:00:00Z",
+      sar_declare: false,
     },
     {
       id: "a2",
-      customer_id: "c1",
+      client_id: "c1",
       customer_name: "Koffi BIAOU",
-      alert_type: "KYC_INCOMPLET",
+      type_alerte: "KYC_INCOMPLET",
       risk_level: "MEDIUM",
-      status: "UNDER_REVIEW",
-      created_at: "2026-04-28T10:00:00Z",
-      sar_filed: false,
+      statut: "UNDER_REVIEW",
+      date_creation: "2026-04-28T10:00:00Z",
+      sar_declare: false,
     },
   ],
   total: 2,
@@ -372,35 +375,37 @@ describe("ClientsListPage", () => {
     customerService.list.mockResolvedValue(MOCK_CLIENTS);
   });
 
+  async function renderClientsListPage() {
+    const utils = renderWithProviders(<ClientsListPage />, { session: ADMIN_SESSION });
+    await screen.findByText("BIAOU");
+    return utils;
+  }
+
   it("affiche le champ de recherche", async () => {
-    renderWithProviders(<ClientsListPage />, { session: ADMIN_SESSION });
+    await renderClientsListPage();
     expect(
       screen.getByPlaceholderText(/Rechercher/i),
     ).toBeInTheDocument();
   });
 
   it("affiche le bouton Nouveau client", async () => {
-    renderWithProviders(<ClientsListPage />, { session: ADMIN_SESSION });
+    await renderClientsListPage();
     expect(screen.getByText(/Nouveau/i)).toBeInTheDocument();
   });
 
   it("affiche les clients après chargement", async () => {
-    renderWithProviders(<ClientsListPage />, { session: ADMIN_SESSION });
-    await waitFor(() => {
-      expect(screen.getByText("BIAOU")).toBeInTheDocument();
-      expect(screen.getByText("SOGLO")).toBeInTheDocument();
-      expect(screen.getByText("OUEDRAOGO")).toBeInTheDocument();
-    });
+    await renderClientsListPage();
+    expect(screen.getByText("BIAOU")).toBeInTheDocument();
+    expect(screen.getByText("SOGLO")).toBeInTheDocument();
+    expect(screen.getByText("OUEDRAOGO")).toBeInTheDocument();
   });
 
   it("affiche le badge PEP pour Fatima", async () => {
-    renderWithProviders(<ClientsListPage />, { session: ADMIN_SESSION });
-    await waitFor(() => {
-      const ligneFatima = screen.getByText(/Fatima/i).closest("tr");
-      expect(ligneFatima).toBeInTheDocument();
-      const pepBadge = within(ligneFatima).getByText("PEP");
-      expect(pepBadge).toBeInTheDocument();
-    });
+    await renderClientsListPage();
+    const ligneFatima = screen.getByText(/Fatima/i).closest("tr");
+    expect(ligneFatima).toBeInTheDocument();
+    const pepBadge = within(ligneFatima).getByText("PEP");
+    expect(pepBadge).toBeInTheDocument();
   });
 });
 
@@ -414,24 +419,28 @@ describe("AddClientPage — Stepper", () => {
     referentialService.riskZones.mockResolvedValue(MOCK_RISK_ZONES);
   });
 
+  async function renderAddClientPage() {
+    const utils = renderWithProviders(<AddClientPage />, { session: ADMIN_SESSION });
+    await screen.findByLabelText(/Prénom/i);
+    return utils;
+  }
+
   it("affiche les 3 étapes du stepper", async () => {
-    renderWithProviders(<AddClientPage />, { session: ADMIN_SESSION });
-    await waitFor(() => {
-      expect(screen.getByText("Informations personnelles")).toBeInTheDocument();
-      expect(screen.getByText("Géographie & KYC")).toBeInTheDocument();
-      expect(screen.getByText("Récapitulatif")).toBeInTheDocument();
-    });
+    await renderAddClientPage();
+    expect(screen.getByText("Informations personnelles")).toBeInTheDocument();
+    expect(screen.getByText("Géographie & KYC")).toBeInTheDocument();
+    expect(screen.getByText("Récapitulatif")).toBeInTheDocument();
   });
 
-  it("affiche les champs de l'étape 1", () => {
-    renderWithProviders(<AddClientPage />, { session: ADMIN_SESSION });
+  it("affiche les champs de l'étape 1", async () => {
+    await renderAddClientPage();
     expect(screen.getByLabelText(/Prénom/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Nom de famille/i)).toBeInTheDocument();
     expect(screen.getAllByText(/Profession/i).length).toBeGreaterThan(0);
   });
 
   it("affiche une erreur si on clique Suivant sans remplir les champs", async () => {
-    renderWithProviders(<AddClientPage />, { session: ADMIN_SESSION });
+    await renderAddClientPage();
     fireEvent.click(screen.getByText(/Suivant/i));
     await waitFor(() => {
       expect(screen.getByText("Le prénom est requis")).toBeInTheDocument();
@@ -440,7 +449,7 @@ describe("AddClientPage — Stepper", () => {
   });
 
   it("passe à l'étape 2 si l'étape 1 est valide", async () => {
-    renderWithProviders(<AddClientPage />, { session: ADMIN_SESSION });
+    await renderAddClientPage();
 
     fireEvent.change(screen.getByPlaceholderText("ex : Koffi"), {
       target: { value: "Koffi" },
@@ -472,32 +481,31 @@ describe("AlertsPage", () => {
     alertService.list.mockResolvedValue(MOCK_ALERTS_DATA);
   });
 
+  async function renderAlertsPage() {
+    const utils = renderWithProviders(<AlertsPage />, { session: ADMIN_SESSION });
+    await screen.findByText("Fatima OUEDRAOGO");
+    return utils;
+  }
+
   it("affiche le titre de la page", async () => {
-    renderWithProviders(<AlertsPage />, { session: ADMIN_SESSION });
-    await waitFor(() => {
-      expect(screen.getByText("Gestion des alertes")).toBeInTheDocument();
-    });
+    await renderAlertsPage();
+    expect(screen.getByText("Gestion des alertes")).toBeInTheDocument();
   });
 
   it("affiche les alertes chargées", async () => {
-    renderWithProviders(<AlertsPage />, { session: ADMIN_SESSION });
-    await waitFor(() => {
-      expect(screen.getByText("Fatima OUEDRAOGO")).toBeInTheDocument();
-      expect(screen.getByText("Koffi BIAOU")).toBeInTheDocument();
-    });
+    await renderAlertsPage();
+    expect(screen.getByText("Fatima OUEDRAOGO")).toBeInTheDocument();
+    expect(screen.getByText("Koffi BIAOU")).toBeInTheDocument();
   });
 
   it("affiche les filtres de statut et niveau", async () => {
-    renderWithProviders(<AlertsPage />, { session: ADMIN_SESSION });
-    expect(screen.getByText("Statut")).toBeInTheDocument();
+    await renderAlertsPage();
+    expect(screen.getAllByText("Statut")[0]).toBeInTheDocument();
     expect(screen.getByText("Niveau de risque")).toBeInTheDocument();
   });
 
   it("ouvre le modal de gestion au clic sur Gérer", async () => {
-    renderWithProviders(<AlertsPage />, { session: ADMIN_SESSION });
-    await waitFor(() => {
-      expect(screen.getByText("Fatima OUEDRAOGO")).toBeInTheDocument();
-    });
+    await renderAlertsPage();
     const gererBtns = screen.getAllByRole("button", { name: /Gérer/i });
     fireEvent.click(gererBtns[0]);
     await waitFor(() => {
@@ -519,15 +527,21 @@ describe("AdminPage", () => {
     referentialService.riskZones.mockResolvedValue(MOCK_RISK_ZONES);
   });
 
+  async function renderAdminPage() {
+    const utils = renderWithProviders(<AdminPage />, { session: ADMIN_SESSION });
+    await screen.findByText("C1");
+    return utils;
+  }
+
   it("affiche l'avertissement admin", async () => {
-    renderWithProviders(<AdminPage />, { session: ADMIN_SESSION });
+    await renderAdminPage();
     expect(
       screen.getByText(/Zone réservée aux administrateurs/i),
     ).toBeInTheDocument();
   });
 
   it("affiche les 4 onglets", async () => {
-    renderWithProviders(<AdminPage />, { session: ADMIN_SESSION });
+    await renderAdminPage();
     await waitFor(() => {
       expect(screen.getByText("Poids critères")).toBeInTheDocument();
       expect(screen.getByText("Seuils risque")).toBeInTheDocument();
@@ -537,7 +551,7 @@ describe("AdminPage", () => {
   });
 
   it("affiche les critères C1-C6 dans l'onglet poids", async () => {
-    renderWithProviders(<AdminPage />, { session: ADMIN_SESSION });
+    await renderAdminPage();
     await waitFor(() => {
       expect(screen.getByText("C1")).toBeInTheDocument();
       expect(screen.getByText("C6")).toBeInTheDocument();
@@ -545,7 +559,7 @@ describe("AdminPage", () => {
   });
 
   it("bascule vers l'onglet Seuils risque", async () => {
-    renderWithProviders(<AdminPage />, { session: ADMIN_SESSION });
+    await renderAdminPage();
     fireEvent.click(screen.getByText("Seuils risque"));
     await waitFor(() => {
       expect(screen.getByText("FAIBLE")).toBeInTheDocument();
@@ -554,7 +568,7 @@ describe("AdminPage", () => {
   });
 
   it("bascule vers l'onglet Gestion PEP", async () => {
-    renderWithProviders(<AdminPage />, { session: ADMIN_SESSION });
+    await renderAdminPage();
     fireEvent.click(screen.getByText("Gestion PEP"));
     await waitFor(() => {
       expect(screen.getByText(/Import CSV/i)).toBeInTheDocument();
@@ -563,7 +577,7 @@ describe("AdminPage", () => {
   });
 
   it("bascule vers l'onglet Audit logs", async () => {
-    renderWithProviders(<AdminPage />, { session: ADMIN_SESSION });
+    await renderAdminPage();
     fireEvent.click(screen.getByText("Audit logs"));
     await waitFor(() => {
       expect(screen.getByText(/Toutes les actions/i)).toBeInTheDocument();
@@ -571,7 +585,7 @@ describe("AdminPage", () => {
   });
 
   it("affiche le formulaire ajout PEP manuel", async () => {
-    renderWithProviders(<AdminPage />, { session: ADMIN_SESSION });
+    await renderAdminPage();
     fireEvent.click(screen.getByText("Gestion PEP"));
     await waitFor(() => {
       expect(screen.getByText("Ajouter à la liste PEP")).toBeInTheDocument();
@@ -579,7 +593,7 @@ describe("AdminPage", () => {
   });
 
   it("valide le formulaire PEP manuel si champs requis vides", async () => {
-    renderWithProviders(<AdminPage />, { session: ADMIN_SESSION });
+    await renderAdminPage();
     fireEvent.click(screen.getByText("Gestion PEP"));
     await waitFor(() => {
       expect(screen.getByText("Ajouter à la liste PEP")).toBeInTheDocument();

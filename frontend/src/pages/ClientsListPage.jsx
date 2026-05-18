@@ -114,20 +114,20 @@ export default function ClientsListPage() {
       label: "Nom",
       render: (_, r) => (
         <span className="text-sm font-semibold text-[#111827] font-sans">
-          {r.last_name || r.nom || "—"}
+          {r.nom || "—"}
         </span>
       ),
     },
     {
       key: "prenom",
       label: "Prénom",
-      render: (_, r) => r.first_name || r.prenom || "—",
+      render: (_, r) => r.prenom || "—",
     },
     {
       key: "score",
       label: "Score",
       render: (_, r) => {
-        const sc = r.current_score ?? r.score ?? null;
+        const sc = r.score ?? null; // Note: score global non renvoyé dans la liste — disponible après scoring
         if (sc == null)
           return <span className="text-[#9CA3AF] text-xs">—</span>;
         const color = scoreColor(sc);
@@ -150,7 +150,7 @@ export default function ClientsListPage() {
       key: "risk_category",
       label: "Catégorie",
       render: (v, r) => {
-        const cat = normalizeCategory(v || r.kyc_level);
+        const cat = normalizeCategory(r.kyc_level);
         return cat ? <Badge type={cat}>{cat}</Badge> : "—";
       },
     },
@@ -158,19 +158,23 @@ export default function ClientsListPage() {
       key: "statut_pep",
       label: "PEP",
       render: (v, r) =>
-        r.is_pep || r.statut_pep ? (
+        r.statut_pep ? (
           <Badge type="PEP">PEP</Badge>
         ) : (
-          <span className="text-xs font-normal font-sans text-[#9CA3AF]">Non</span>
+          <span className="text-xs font-normal font-sans text-[#9CA3AF]">
+            Non
+          </span>
         ),
     },
     {
       key: "date_creation",
       label: "Adhésion",
       render: (v, r) => {
-        const d = r.customer_since || v;
+        const d = v; // date_creation — champ Customer
         return (
-          <span className="text-xs font-normal font-sans text-[#9CA3AF]">{formatDatetime(d)}</span>
+          <span className="text-xs font-normal font-sans text-[#9CA3AF]">
+            {formatDatetime(d)}
+          </span>
         );
       },
     },

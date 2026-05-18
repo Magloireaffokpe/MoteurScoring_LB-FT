@@ -81,7 +81,11 @@ function KpiCard({ label, value, icon: Icon, color, sub }) {
         <p className="text-3xl font-bold font-display text-[#1E3A8A] mt-0.5">
           {value ?? "—"}
         </p>
-        {sub && <p className="text-xs font-normal font-sans text-[#9CA3AF] mt-0.5 truncate">{sub}</p>}
+        {sub && (
+          <p className="text-xs font-normal font-sans text-[#9CA3AF] mt-0.5 truncate">
+            {sub}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -94,12 +98,12 @@ const ALERT_COLS = (navigate) => [
     label: "Client",
     render: (v, r) => (
       <span className="text-sm font-normal text-[#111827] font-sans">
-        {v || r.customer_id?.slice(0, 12) + "…"}
+        {v || r.client_id?.slice(0, 12) + "…"}
       </span>
     ),
   },
   {
-    key: "alert_type",
+    key: "type_alerte",
     label: "Type",
     render: (v) => (
       <span className="font-mono text-[11px] font-medium bg-[#F3F4F6] text-[#374151] px-2 py-0.5 rounded">
@@ -107,9 +111,9 @@ const ALERT_COLS = (navigate) => [
       </span>
     ),
   },
-  { key: "created_at", label: "Date", render: (v) => formatDatetime(v) },
+  { key: "date_creation", label: "Date", render: (v) => formatDatetime(v) },
   {
-    key: "status",
+    key: "statut",
     label: "Statut",
     render: (v) => (
       <Badge type={v}>
@@ -118,11 +122,12 @@ const ALERT_COLS = (navigate) => [
     ),
   },
   {
-    key: "risk_level",
+    key: "niveau",
     label: "Niveau",
-    render: (v) => {
-      const cat = v === "HIGH" ? "ÉLEVÉ" : v === "MEDIUM" ? "MOYEN" : "FAIBLE";
-      return <Badge type={cat}>{v}</Badge>;
+    render: (_, r) => {
+      const cat =
+        r.type_alerte === "SCORE_ELEVE" ? "ÉLEVÉ" : r.type_alerte === "PEP_DETECTE" ? "ÉLEVÉ" : "MOYEN";
+      return <Badge type={cat}>{cat}</Badge>;
     },
   },
   {
@@ -295,7 +300,10 @@ export default function DashboardPage() {
             </Card>
 
             <Card title="Rescore rapide">
-              <form onSubmit={handleRescore} className="flex flex-col sm:flex-row gap-2">
+              <form
+                onSubmit={handleRescore}
+                className="flex flex-col sm:flex-row gap-2"
+              >
                 <input
                   className="flex-1 min-w-0 px-3 py-2.5 rounded-xl border border-[#E5E7EB] text-sm
                              focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]/30 focus:border-[#1E3A8A]"
@@ -303,7 +311,12 @@ export default function DashboardPage() {
                   value={rescoreId}
                   onChange={(e) => setRescoreId(e.target.value)}
                 />
-                <Button type="submit" variant="secondary" loading={rescoring} className="w-full sm:w-auto flex-shrink-0 justify-center">
+                <Button
+                  type="submit"
+                  variant="secondary"
+                  loading={rescoring}
+                  className="w-full sm:w-auto flex-shrink-0 justify-center"
+                >
                   <RefreshCw className="w-4 h-4" /> Scorer
                 </Button>
               </form>

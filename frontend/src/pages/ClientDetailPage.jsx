@@ -133,7 +133,7 @@ export default function ClientDetailPage() {
   }
 
   const fullName = formatName(client);
-  const isPep = client.is_pep || client.statut_pep;
+  const isPep = client.statut_pep;
   const kycCompletion = client.kyc_completion || 0;
   const kycColor =
     kycCompletion >= 80
@@ -179,13 +179,13 @@ export default function ClientDetailPage() {
   /* Colonnes alertes */
   const alertCols = [
     {
-      key: "alert_type",
+      key: "type_alerte",
       label: "Type",
       render: (v) => <span className="font-mono text-xs">{v}</span>,
     },
-    { key: "created_at", label: "Date", render: (v) => formatDatetime(v) },
+    { key: "date_creation", label: "Date", render: (v) => formatDatetime(v) },
     {
-      key: "status",
+      key: "statut",
       label: "Statut",
       render: (v) => (
         <Badge type={v}>
@@ -198,11 +198,17 @@ export default function ClientDetailPage() {
       ),
     },
     {
-      key: "risk_level",
+      key: "type_alerte",
       label: "Niveau",
       render: (v) => (
         <Badge
-          type={v === "HIGH" ? "ÉLEVÉ" : v === "MEDIUM" ? "MOYEN" : "FAIBLE"}
+          type={
+            v === "SCORE_ELEVE"
+              ? "ÉLEVÉ"
+              : v === "PEP_DETECTE"
+                ? "ÉLEVÉ"
+                : "MOYEN"
+          }
         >
           {v}
         </Badge>
@@ -212,7 +218,7 @@ export default function ClientDetailPage() {
       key: "id",
       label: "SAR",
       render: (alertId, row) =>
-        row.sar_filed ? (
+        row.sar_declare ? (
           <span className="text-xs text-[#10B981] font-semibold">Déposé</span>
         ) : (
           <Button
@@ -370,17 +376,13 @@ export default function ClientDetailPage() {
               <InfoRow label="Nom complet" value={fullName} highlight />
               <InfoRow
                 label="Date naissance"
-                value={formatDate(
-                  client.date_of_birth || client.date_naissance,
-                )}
+                value={formatDate(client.date_naissance)}
               />
               <InfoRow label="Téléphone" value={client.phone} />
               <InfoRow label="Email" value={client.email} />
               <InfoRow
                 label="Adhésion"
-                value={formatDatetime(
-                  client.customer_since || client.date_creation,
-                )}
+                value={formatDatetime(client.date_creation)}
               />
             </Card>
 
@@ -393,19 +395,21 @@ export default function ClientDetailPage() {
               <InfoRow label="Code métier" value={client.profession_code} />
               <InfoRow
                 label="Risque profession"
-                value={
-                  client.profession_risk_category || client.profession_risk
-                }
+                value={client.profession_risk}
               />
               <InfoRow
                 label="Revenus déclarés"
-                value={formatAmount(
-                  client.monthly_income || client.revenus_declares,
-                )}
+                value={formatAmount(client.revenus_declares)}
               />
               <InfoRow
                 label="Zone géo."
-                value={client.zone_geo_classification}
+                value={
+                  client.city && client.region
+                    ? `${client.city}, ${client.region}`
+                    : client.zone_geo
+                      ? `Zone #${client.zone_geo}`
+                      : "—"
+                }
               />
               <InfoRow
                 label="Statut PEP"
@@ -422,16 +426,14 @@ export default function ClientDetailPage() {
                     className="flex items-center justify-between py-2.5 border-b border-[#F3F4F6] last:border-0"
                   >
                     <div>
-                      <p className="text-sm font-medium">
-                        {acc.account_type || acc.type_compte}
-                      </p>
+                      <p className="text-sm font-medium">{acc.type_compte}</p>
                       <p className="text-xs text-[#9CA3AF] font-mono">
                         {acc.id?.slice(0, 12)}…
                       </p>
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-bold">
-                        {formatAmount(acc.current_balance || acc.solde_moyen)}
+                        {formatAmount(acc.solde_moyen)}
                       </p>
                       <Badge
                         type={acc.status === "ACTIF" ? "FAIBLE" : "CLOSED"}
@@ -453,21 +455,16 @@ export default function ClientDetailPage() {
                   >
                     <FileCheck className="w-4 h-4 text-[#1E3A8A] mt-0.5 flex-shrink-0" />
                     <div className="flex-1">
-                      <p className="text-sm font-medium">
-                        {doc.doc_type || doc.type_doc}
+                      <p className="text-sm font-medium">{doc.type_doc}</p>
+                      <p className="text-xs text-[#9CA3AF]">
+                        N° {doc.numero || "—"}
                       </p>
                       <p className="text-xs text-[#9CA3AF]">
-                        N° {doc.doc_number || doc.numero || "—"}
-                      </p>
-                      <p className="text-xs text-[#9CA3AF]">
-                        Exp. :{" "}
-                        {formatDate(doc.expiry_date || doc.date_expiration)}
+                        Exp. : {formatDate(doc.date_expiration)}
                       </p>
                     </div>
-                    <Badge
-                      type={doc.is_verified || doc.valide ? "FAIBLE" : "ÉLEVÉ"}
-                    >
-                      {doc.is_verified || doc.valide ? "Valide" : "Invalide"}
+                    <Badge type={doc.valide ? "FAIBLE" : "ÉLEVÉ"}>
+                      {doc.valide ? "Valide" : "Invalide"}
                     </Badge>
                   </div>
                 ))}

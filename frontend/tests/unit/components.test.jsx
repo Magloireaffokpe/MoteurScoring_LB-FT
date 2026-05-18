@@ -13,6 +13,17 @@ import { Table, Pagination } from "../../src/components/Table";
 import { FormInput, FormSelect } from "../../src/components/FormInput";
 import { ScorePanel } from "../../src/components/ScorePanel";
 
+// Mock Recharts to avoid layout warnings in jsdom
+vi.mock("recharts", async () => {
+  const original = await vi.importActual("recharts");
+  return {
+    ...original,
+    ResponsiveContainer: ({ children }) => (
+      <div style={{ width: 800, height: 600 }}>{children}</div>
+    ),
+  };
+});
+
 // ────────────────────────────────────────────────────────────────────
 // Badge
 // ────────────────────────────────────────────────────────────────────

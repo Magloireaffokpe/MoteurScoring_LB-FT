@@ -1,22 +1,39 @@
 // src/services/adminService.js
-// NB : ce fichier n'était pas dans la structure initiale — ajouté car requis par AdminPage
 import api from "./api";
 
 export const adminService = {
   // ── Critères de scoring ──────────────────────────────────────────────────
-  /** GET /api/admin/scoring-criteria → { items: [{id, code, name, weight, description}] } */
+  /**
+   * GET /api/admin/scoring-criteria
+   * Retourne { items: [{ id, code, name, weight, description }] }
+   * Champs alignés avec ScoringCriteria (scoring_criteria.py) :
+   *   weight : valeur entière en % (ex. 20, 25…)
+   */
   getCriteria: () => api.get("/api/admin/scoring-criteria").then((r) => r.data),
 
-  /** PUT /api/admin/scoring-criteria/{id} — Body : { weight: number } */
+  /**
+   * PUT /api/admin/scoring-criteria/{criteria_id}
+   * Body : { weight: number }
+   */
   updateCriteria: (id, body) =>
     api.put(`/api/admin/scoring-criteria/${id}`, body).then((r) => r.data),
 
   // ── Seuils de risque ─────────────────────────────────────────────────────
-  /** GET /api/admin/risk-thresholds → { items: [{id, category, score_min, score_max, required_action}] } */
+  /**
+   * GET /api/admin/risk-thresholds
+   * Retourne { items: [{ id, category, score_min, score_max, action }] }
+   * Champs alignés avec RiskThreshold (risk_thresholds.py) :
+   *   score_min / score_max / action  (pas min_score / max_score / required_action)
+   *   category : 'FAIBLE' | 'MOYEN' | 'ELEVE'
+   */
   getThresholds: () =>
     api.get("/api/admin/risk-thresholds").then((r) => r.data),
 
-  /** PUT /api/admin/risk-thresholds/{id} */
+  /**
+   * PUT /api/admin/risk-thresholds/{id}
+   * Body : { score_min, score_max, action }
+   * NB : route non listée dans api_routes_backend.md — à confirmer avec Marcos
+   */
   updateThreshold: (id, body) =>
     api.put(`/api/admin/risk-thresholds/${id}`, body).then((r) => r.data),
 
@@ -35,23 +52,42 @@ export const adminService = {
 
   /**
    * POST /api/admin/pep-list
-   * Body : { nom, prenom, fonction, pays (int FK), source, date_debut, date_fin, active }
-   * Champs synchronisés avec PepEntry SQLAlchemy (pep_list.py de Marcos)
+   * Body aligné avec PepEntry (pep_list.py) :
+   *   { nom, prenom, fonction, pays (int FK → countries.id),
+   *     source, date_debut, date_fin, active }
+   * NB : route non listée dans api_routes_backend.md — à confirmer avec Marcos
    */
   addPep: (body) => api.post("/api/admin/pep-list", body).then((r) => r.data),
 
   // ── Utilisateurs ──────────────────────────────────────────────────────────
-  /** GET /api/admin/users → liste des utilisateurs */
+  /**
+   * GET /api/admin/users
+   * Retourne liste des utilisateurs
+   */
   getUsers: () => api.get("/api/admin/users").then((r) => r.data),
 
-  /** PUT /api/admin/users/{id} */
-  updateUser: (id, body) =>
-    api.put(`/api/admin/users/${id}`, body).then((r) => r.data),
+  /**
+   * POST /api/admin/users
+   * Body : { login, password, role_id }
+   * Champs alignés avec User (users.py) :
+   *   role_id : Integer FK → user_roles.id  (pas role: string)
+   *   password_hash côté backend  (le routeur hache le password reçu)
+   */
+  createUser: (body) => api.post("/api/admin/users", body).then((r) => r.data),
+
+  /**
+   * PUT /api/admin/users/{user_id}/toggle-active
+   * Active ou désactive un compte utilisateur
+   */
+  toggleUserActive: (id) =>
+    api.put(`/api/admin/users/${id}/toggle-active`).then((r) => r.data),
 
   // ── Audit logs ────────────────────────────────────────────────────────────
   /**
    * GET /api/admin/audit-logs?user_id=&action=&skip=0&limit=50
-   * Retourne { items: [{id, user_id, action, resource_type, resource_id, timestamp, ip_address}], total }
+   * Champs alignés avec AuditLog (audit_logs.py) :
+   *   Retourne { items: [{ id, user_id, client_id, action, timestamp, ip_address }], total }
+   *   NB : le model a client_id (pas resource_id / resource_type)
    */
   getAuditLogs: (params) =>
     api.get("/api/admin/audit-logs", { params }).then((r) => r.data),

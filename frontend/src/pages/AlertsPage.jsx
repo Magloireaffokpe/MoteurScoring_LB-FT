@@ -48,10 +48,9 @@ export default function AlertsPage() {
   const [editModal, setEditModal] = useState(false);
   const [editAlert, setEditAlert] = useState(null);
   const [editForm, setEditForm] = useState({
-    status: "",
-    action_taken: "",
-    action_notes: "",
-    sar_filed: false,
+    statut: "",
+    decision: "",
+    sar_declare: false,
   });
   const [saving, setSaving] = useState(false);
 
@@ -60,8 +59,7 @@ export default function AlertsPage() {
       alertService.list({
         skip: (page - 1) * pageSize,
         limit: pageSize,
-        ...(statusFilter && { status: statusFilter }),
-        ...(riskFilter && { risk_level: riskFilter }),
+        ...(statusFilter && { statut: statusFilter }),
       }),
     [page, statusFilter, riskFilter],
   );
@@ -72,10 +70,9 @@ export default function AlertsPage() {
   const openEdit = (alert) => {
     setEditAlert(alert);
     setEditForm({
-      status: alert.status || "OPEN",
-      action_taken: alert.action_taken || "",
-      action_notes: alert.action_notes || "",
-      sar_filed: alert.sar_filed || false,
+      statut: alert.statut || "OPEN",
+      decision: alert.decision || "",
+      sar_declare: alert.sar_declare || false,
     });
     setEditModal(true);
   };
@@ -110,12 +107,12 @@ export default function AlertsPage() {
       label: "Client",
       render: (v, r) => (
         <span className="text-sm font-semibold text-[#111827] font-sans">
-          {v || r.customer_id?.slice(0, 12) + "…"}
+          {v || r.client_id?.slice(0, 12) + "…"}
         </span>
       ),
     },
     {
-      key: "alert_type",
+      key: "type_alerte",
       label: "Type",
       render: (v) => (
         <span className="font-mono text-[11px] font-medium bg-[#F3F4F6] text-[#374151] px-2 py-0.5 rounded">
@@ -124,21 +121,25 @@ export default function AlertsPage() {
       ),
     },
     {
-      key: "risk_level",
+      key: "niveau",
       label: "Niveau",
-      render: (v) => {
+      render: (_, r) => {
         const cat =
-          v === "HIGH" ? "ÉLEVÉ" : v === "MEDIUM" ? "MOYEN" : "FAIBLE";
-        return <Badge type={cat}>{v}</Badge>;
+          r.type_alerte === "SCORE_ELEVE"
+            ? "ÉLEVÉ"
+            : r.type_alerte === "PEP_DETECTE"
+              ? "ÉLEVÉ"
+              : "MOYEN";
+        return <Badge type={cat}>{cat}</Badge>;
       },
     },
     {
-      key: "created_at",
+      key: "date_creation",
       label: "Date création",
       render: (v) => formatDatetime(v),
     },
     {
-      key: "status",
+      key: "statut",
       label: "Statut",
       render: (v) => (
         <Badge type={v}>
@@ -151,11 +152,13 @@ export default function AlertsPage() {
       ),
     },
     {
-      key: "sar_filed",
+      key: "sar_declare",
       label: "SAR",
       render: (v) =>
         v ? (
-          <span className="text-xs text-[#10B981] font-semibold font-sans">Déposé</span>
+          <span className="text-xs text-[#10B981] font-semibold font-sans">
+            Déposé
+          </span>
         ) : (
           <span className="text-xs text-[#9CA3AF] font-sans">—</span>
         ),
@@ -177,8 +180,8 @@ export default function AlertsPage() {
   ];
 
   // Stats rapides
-  const openCount = alerts.filter((a) => a.status === "OPEN").length;
-  const reviewCount = alerts.filter((a) => a.status === "UNDER_REVIEW").length;
+  const openCount = alerts.filter((a) => a.statut === "OPEN").length;
+  const reviewCount = alerts.filter((a) => a.statut === "UNDER_REVIEW").length;
 
   return (
     <Layout pageTitle="Gestion des alertes">
@@ -214,7 +217,9 @@ export default function AlertsPage() {
             >
               <Icon className="w-5 h-5 flex-shrink-0" />
               <div>
-                <p className="text-[13px] font-medium font-sans opacity-80">{label}</p>
+                <p className="text-[13px] font-medium font-sans opacity-80">
+                  {label}
+                </p>
                 <p className="text-2xl font-bold font-display">{value}</p>
               </div>
             </div>
@@ -301,14 +306,14 @@ export default function AlertsPage() {
       <Modal
         open={editModal}
         onClose={() => setEditModal(false)}
-        title={`Gérer — ${editAlert?.alert_type || "Alerte"}`}
+        title={`Gérer — ${editAlert?.type_alerte || "Alerte"}`}
       >
         <div className="space-y-4">
           <FormSelect
             label="Nouveau statut"
-            value={editForm.status}
+            value={editForm.statut}
             onChange={(e) =>
-              setEditForm((f) => ({ ...f, status: e.target.value }))
+              setEditForm((f) => ({ ...f, statut: e.target.value }))
             }
           >
             <option value="OPEN">Ouvert</option>
@@ -318,9 +323,9 @@ export default function AlertsPage() {
 
           <FormSelect
             label="Action prise"
-            value={editForm.action_taken}
+            value={editForm.decision}
             onChange={(e) =>
-              setEditForm((f) => ({ ...f, action_taken: e.target.value }))
+              setEditForm((f) => ({ ...f, decision: e.target.value }))
             }
           >
             {ACTION_OPTS.map((o) => (
@@ -331,10 +336,10 @@ export default function AlertsPage() {
           </FormSelect>
 
           <FormTextarea
-            label="Notes / Observations"
-            value={editForm.action_notes}
+            label="Notes / Décision"
+            value={editForm.decision}
             onChange={(e) =>
-              setEditForm((f) => ({ ...f, action_notes: e.target.value }))
+              setEditForm((f) => ({ ...f, decision: e.target.value }))
             }
             placeholder="Décrivez les actions prises…"
           />
@@ -342,9 +347,9 @@ export default function AlertsPage() {
           <label className="flex items-center gap-3 cursor-pointer">
             <input
               type="checkbox"
-              checked={editForm.sar_filed}
+              checked={editForm.sar_declare}
               onChange={(e) =>
-                setEditForm((f) => ({ ...f, sar_filed: e.target.checked }))
+                setEditForm((f) => ({ ...f, sar_declare: e.target.checked }))
               }
               className="w-4 h-4 rounded accent-[#1E3A8A]"
             />

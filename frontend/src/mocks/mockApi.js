@@ -271,40 +271,40 @@ const MOCK_SCORES = {
 const MOCK_ALERTS = [
   {
     id: "al-001",
-    customer_id: "c-003",
+    client_id: "c-003",
     customer_name: "Fatima OUEDRAOGO",
-    alert_type: "SCORE_ELEVE",
+    type_alerte: "SCORE_ELEVE",
     risk_level: "HIGH",
-    status: "OPEN",
+    statut: "OPEN",
     description: "Score de risque élevé (78/100) — seuil ÉLEVÉ atteint",
-    created_at: "2026-05-11T14:01:00Z",
-    sar_filed: false,
+    date_creation: "2026-05-11T14:01:00Z",
+    sar_declare: false,
     action_taken: null,
     action_notes: null,
   },
   {
     id: "al-002",
-    customer_id: "c-001",
+    client_id: "c-001",
     customer_name: "Koffi BIAOU",
-    alert_type: "KYC_INCOMPLET",
+    type_alerte: "KYC_INCOMPLET",
     risk_level: "MEDIUM",
-    status: "UNDER_REVIEW",
+    statut: "UNDER_REVIEW",
     description: "Document expirant dans 30 jours",
-    created_at: "2026-05-08T10:00:00Z",
-    sar_filed: false,
+    date_creation: "2026-05-08T10:00:00Z",
+    sar_declare: false,
     action_taken: "CONDITIONAL_APPROVAL",
     action_notes: "Justificatif fourni",
   },
   {
     id: "al-003",
-    customer_id: "c-005",
+    client_id: "c-005",
     customer_name: "Sylvestre AGBODJAN",
-    alert_type: "SCORE_ELEVE",
+    type_alerte: "SCORE_ELEVE",
     risk_level: "MEDIUM",
-    status: "CLOSED",
+    statut: "CLOSED",
     description: "Score modéré surveillé",
-    created_at: "2026-04-20T08:00:00Z",
-    sar_filed: false,
+    date_creation: "2026-04-20T08:00:00Z",
+    sar_declare: false,
     action_taken: "NO_ACTION",
     action_notes: "Situation normale",
   },
@@ -559,10 +559,23 @@ export function setupMocks() {
       const body = typeof config.data === "string" ? JSON.parse(config.data || "{}") : (config.data || {});
       const newClient = {
         id: `c-new-${Date.now()}`,
-        nom: body.last_name || "NOUVEAU",
-        prenom: body.first_name || "Client",
+        nom: body.nom || "NOUVEAU",
+        prenom: body.prenom || "Client",
+        phone: body.phone || null,
+        email: body.email || null,
+        profession_code: body.profession_code || null,
+        profession_name: body.profession_name || null,
+        profession_risk: body.profession_risk || "LOW",
+        revenus_declares: body.revenus_declares || 0,
+        city: body.city || null,
+        region: body.region || null,
+        zone_geo: body.zone_geo || null,
+        pays: body.pays || null,
+        statut_pep: body.statut_pep || false,
         status: "ACTIVE",
-        created_at: new Date().toISOString(),
+        date_creation: new Date().toISOString(),
+        kyc_completion: 0,
+        kyc_level: "LOW",
       };
       config.adapter = async () => ({
         data: newClient,
@@ -663,8 +676,8 @@ export function setupMocks() {
     // ── Alertes ───────────────────────────────────────────────────
     if (method === "GET" && url === "/api/alerts") {
       let filtered = [...MOCK_ALERTS];
-      if (params.status)
-        filtered = filtered.filter((a) => a.status === params.status);
+      if (params.statut)
+        filtered = filtered.filter((a) => a.statut === params.statut);
       if (params.risk_level)
         filtered = filtered.filter((a) => a.risk_level === params.risk_level);
       config.adapter = async () => ({
@@ -679,7 +692,7 @@ export function setupMocks() {
 
     if (method === "GET" && url.match(/^\/api\/customers\/[^/]+\/alerts$/)) {
       const clientId = url.split("/")[3];
-      const alerts = MOCK_ALERTS.filter((a) => a.customer_id === clientId);
+      const alerts = MOCK_ALERTS.filter((a) => a.client_id === clientId);
       config.adapter = async () => ({
         data: { items: alerts, total: alerts.length },
         status: 200,
@@ -712,8 +725,8 @@ export function setupMocks() {
         data: {
           id: `al-new-${Date.now()}`,
           ...body,
-          status: "OPEN",
-          created_at: new Date().toISOString(),
+          statut: "OPEN",
+          date_creation: new Date().toISOString(),
         },
         status: 201,
         statusText: "Created",
