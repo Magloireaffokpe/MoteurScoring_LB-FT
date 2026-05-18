@@ -15,6 +15,8 @@ from app.models.pep_list import PepEntry
 from app.models.countries import Country
 from app.schemas.common import MessageResponse
 from app.services.audit_service import log_action
+from app.auth.security import hash_password
+from pydantic import BaseModel as PydanticBase
 
 router = APIRouter()
 
@@ -239,4 +241,48 @@ def get_audit_logs(
             for l in items
         ],
         "total": total
+    }
+
+
+
+class UserCreate(PydanticBase):
+    login: str
+    password: str
+    role_name: str = "compliance_officer"  # 'admin' ou 'compliance_officer'
+
+@router.post("/users", status_code=201)
+def create_user(
+    data: UserCreate,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin)
+):
+    """Crée un nouveau compte agent."""
+    # Vérifie doublon login
+    existing = db.query(User).filter(User.login == data.login).first()
+    if existing:
+        raise HTTPException(status_code=422, detail="Login already exists")
+
+    # Récupère le rôle
+    from app.models.user_roles import UserRole
+    role = db.query(UserRole).filter(UserRole.name == data.role_name).first()
+    if not role:
+        raise HTTPException(status_code=422, detail=f"Role '{data.role_name}' not found")
+
+    user = User(
+        login=data.login,
+        password_hash=hash_password(data.password),
+        role_id=role.id,
+        is_active=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    log_action(db, str(current_user.id), "CREATE_USER")
+
+    return {
+        "id": str(user.id),
+        "login": user.login,
+        "role": role.name,
+        "is_active": user.is_active,
     }

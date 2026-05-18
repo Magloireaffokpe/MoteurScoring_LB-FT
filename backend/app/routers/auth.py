@@ -50,5 +50,9 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
 
 @router.get("/auth/me", response_model=UserMe)
 def get_me(current_user: User = Depends(get_current_user)):
-    """Retourne le profil de l'utilisateur connecté."""
-    return current_user
+    return {
+        "id": current_user.id,
+        "login": current_user.login,
+        "role": current_user.role.name,
+        "is_active": current_user.is_active,
+    }

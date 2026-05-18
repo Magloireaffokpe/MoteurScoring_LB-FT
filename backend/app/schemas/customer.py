@@ -103,6 +103,8 @@ class CustomerSummary(BaseModel):
     email: Optional[str]
     profession_code: Optional[str]
     profession_name: Optional[str]
+    city: Optional[str] = None           # ← Ajouté
+    region: Optional[str] = None         # ← Ajouté
     zone_geo: Optional[int]
     kyc_level: Optional[str]
     kyc_completion: Optional[int]
@@ -112,8 +114,6 @@ class CustomerSummary(BaseModel):
 
     class Config:
         from_attributes = True
-
-
 # ─── Customer Detail (fiche complète + scoring) ───────────
 # Consommé par GET /api/clients/{id}
 # CRITIQUE : ce format est lu par le ScoringEngine de Magloire
