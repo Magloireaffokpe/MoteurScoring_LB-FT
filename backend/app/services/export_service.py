@@ -451,7 +451,8 @@ def generate_customer_pdf(
     buffer  = io.BytesIO()
     styles  = _build_styles()
     export_date = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M") + " UTC"
-    agent_name  = getattr(agent, "full_name", None) or getattr(agent, "login", "Système")
+    # FIX: User n'a pas de champ full_name — on utilise login (seul champ disponible)
+    agent_name = agent.login
 
     doc = SimpleDocTemplate(
         buffer,
@@ -674,6 +675,8 @@ def generate_customer_pdf(
     if open_alerts:
         a_rows = []
         for a in open_alerts:
+            # FIX: champs corrects du modèle Alert
+            # type_alerte / date_creation / statut / sar_declare
             a_rows.append([
                 a.type_alerte or "—",
                 _fmt_datetime(a.date_creation),
@@ -911,7 +914,8 @@ def generate_sar_pdf(
     buffer     = io.BytesIO()
     styles     = _build_styles()
     export_date = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M") + " UTC"
-    agent_name  = getattr(agent, "full_name", None) or getattr(agent, "login", "Système")
+    # FIX: User n'a pas de champ full_name — on utilise login (seul champ disponible)
+    agent_name = agent.login
 
     doc = SimpleDocTemplate(
         buffer,
@@ -1052,13 +1056,15 @@ def generate_sar_pdf(
     elements.append(_section_table("3. DÉTAIL DE L'ALERTE", bg=C_RED))
     elements.append(Spacer(1, 4))
 
+    # FIX: champs corrects du modèle Alert :
+    # type_alerte / statut / sar_declare / date_creation / decision
     alert_data = [
-        ["Type d'alerte",     alert.type_alerte or "—",
-         "Statut",            alert.statut or "—"],
-        ["Date détection",    _fmt_datetime(alert.date_creation),
-         "SAR déclaré",       "Oui" if alert.sar_declare else "Non"],
-        ["Décision/Motif",    Paragraph(alert.decision or "—",
-                                        styles["body"]), "", ""],
+        ["Type d'alerte",  alert.type_alerte or "—",
+         "Statut",         alert.statut or "—"],
+        ["Date détection", _fmt_datetime(alert.date_creation),
+         "SAR déclaré",    "Oui" if alert.sar_declare else "Non"],
+        ["Décision/Motif", Paragraph(alert.decision or "—",
+                                     styles["body"]), "", ""],
     ]
     alert_t = Table(alert_data, colWidths=[3.5 * cm, 5.5 * cm, 3 * cm, 5 * cm])
     alert_t.setStyle(TableStyle([

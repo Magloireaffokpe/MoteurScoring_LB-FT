@@ -34,12 +34,18 @@ from faker import Faker
 from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal
+
+# FIX: imports complets — Score, Alert, AuditLog nécessaires pour le cleanup
+# (FK vers customers.id sans cascade pour Score et AuditLog → erreur à la suppression)
+from app.models.alerts import Alert
+from app.models.audit_logs import AuditLog
 from app.models.countries import Country
 from app.models.customer_accounts import CustomerAccount
 from app.models.customer_docs import CustomerDoc
 from app.models.customers import Customer
 from app.models.pep_list import PepEntry
 from app.models.risk_zones import RiskZone
+from app.models.scores import Score
 from app.models.transactions import Transaction
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -98,28 +104,47 @@ NOMS_BENINOIS = [
     "Vigan", "Vodounou", "Winsou", "Yarou", "Zinsou",
 ]
 
+# FIX: villes et départements béninois — fake.city() / fake.department()
+# retournent des données françaises, incompatibles avec la localisation BJ
+VILLES_BENINOISE = [
+    "Cotonou", "Porto-Novo", "Parakou", "Abomey-Calavi", "Djougou",
+    "Bohicon", "Kandi", "Lokossa", "Ouidah", "Malanville",
+    "Natitingou", "Abomey", "Savalou", "Savè", "Nikki",
+    "Comè", "Pobè", "Aplahoué", "Dassa-Zoumé", "Bassila",
+    "Tanguiéta", "Bembèrèkè", "Tchaourou", "Dogbo", "Sèmè-Kpodji",
+    "Glazoué", "Azovè", "Cové", "Zagnanado", "Allada",
+    "Zogbodomè", "Toffo", "Lalo", "Athiémé", "Kétou",
+    "Adja-Ouèrè", "Ifangni", "Sakété", "Kalale", "Pèrèrè",
+]
+
+DEPARTEMENTS_BENIN = [
+    "Alibori", "Atacora", "Atlantique", "Borgou",
+    "Collines", "Couffo", "Donga", "Littoral",
+    "Mono", "Ouémé", "Plateau", "Zou",
+]
+
 # ── Professions avec leur niveau de risque ────────────────────────────────
 PROFESSIONS = [
     # (code, nom, risk_level, revenu_min, revenu_max)
-    ("FONCT_PUBL",   "Fonctionnaire public",              "LOW",    80_000,  350_000),
-    ("SALARIE_PRIV", "Salarié secteur privé formel",      "LOW",    70_000,  400_000),
-    ("ENSEIGNANT",   "Enseignant",                        "LOW",    60_000,  200_000),
-    ("INFIRMIER",    "Infirmier / Agent de santé",        "LOW",    75_000,  250_000),
-    ("MILITAIRE",    "Militaire / Gendarme",              "LOW",    90_000,  300_000),
-    ("AGRI_MARAICH", "Agriculteur maraîcher",             "LOW",    30_000,  120_000),
-    ("AGRI_VIVRIER", "Agriculteur vivrier",               "LOW",    20_000,   80_000),
-    ("PECHEUR",      "Pêcheur",                           "LOW",    25_000,   90_000),
-    ("COMMER_LOCAL", "Commerçant local",                  "MEDIUM", 60_000,  300_000),
-    ("ARTISAN",      "Artisan / Menuisier / Couturier",   "MEDIUM", 40_000,  180_000),
-    ("MOTO_TAXI",    "Conducteur zémidjan (moto-taxi)",   "MEDIUM", 35_000,  100_000),
-    ("REVENDEUR",    "Revendeur informel",                "MEDIUM", 30_000,  150_000),
-    ("ELEV_ANIMAL",  "Éleveur",                           "MEDIUM", 50_000,  200_000),
-    ("COMMER_TRANSFR","Commerçant transfrontalier",       "HIGH",  100_000,  800_000),
-    ("CHANGEUR",     "Changeur de devises / Bureau",      "HIGH",  200_000,1_500_000),
-    ("TRANSPORTEUR", "Transporteur international",        "HIGH",  150_000,  900_000),
-    ("IMPORT_EXPORT","Importateur / Exportateur",         "HIGH",  200_000,2_000_000),
-    ("CASINO_JEU",   "Gérant casino / Parieur",           "HIGH",  300_000,3_000_000),
-    ("INCONNU",      "Activité non déclarée",             "HIGH",        0,   50_000),
+    ("FONCT_PUBL",    "Fonctionnaire public",              "LOW",    80_000,   350_000),
+    ("SALARIE_PRIV",  "Salarié secteur privé formel",      "LOW",    70_000,   400_000),
+    ("ENSEIGNANT",    "Enseignant",                        "LOW",    60_000,   200_000),
+    ("INFIRMIER",     "Infirmier / Agent de santé",        "LOW",    75_000,   250_000),
+    ("MILITAIRE",     "Militaire / Gendarme",              "LOW",    90_000,   300_000),
+    ("AGRI_MARAICH",  "Agriculteur maraîcher",             "LOW",    30_000,   120_000),
+    ("AGRI_VIVRIER",  "Agriculteur vivrier",               "LOW",    20_000,    80_000),
+    ("PECHEUR",       "Pêcheur",                           "LOW",    25_000,    90_000),
+    ("COMMER_LOCAL",  "Commerçant local",                  "MEDIUM", 60_000,   300_000),
+    ("ARTISAN",       "Artisan / Menuisier / Couturier",   "MEDIUM", 40_000,   180_000),
+    ("MOTO_TAXI",     "Conducteur zémidjan (moto-taxi)",   "MEDIUM", 35_000,   100_000),
+    ("REVENDEUR",     "Revendeur informel",                "MEDIUM", 30_000,   150_000),
+    ("ELEV_ANIMAL",   "Éleveur",                           "MEDIUM", 50_000,   200_000),
+    ("COMMER_TRANSFR","Commerçant transfrontalier",        "HIGH",  100_000,   800_000),
+    ("CHANGEUR",      "Changeur de devises / Bureau",      "HIGH",  200_000, 1_500_000),
+    ("TRANSPORTEUR",  "Transporteur international",        "HIGH",  150_000,   900_000),
+    ("IMPORT_EXPORT", "Importateur / Exportateur",         "HIGH",  200_000, 2_000_000),
+    ("CASINO_JEU",    "Gérant casino / Parieur",           "HIGH",  300_000, 3_000_000),
+    ("INCONNU",       "Activité non déclarée",             "HIGH",        0,    50_000),
 ]
 
 # ── Canaux de transaction ─────────────────────────────────────────────────
@@ -222,20 +247,46 @@ class Referentiels:
 def cleanup_magloire_tables(db: Session) -> None:
     """
     Supprime les données des tables générées (ordre FK respecté).
-    Ne touche JAMAIS aux tables de Marcos (countries, risk_zones,
+    Ne touche JAMAIS aux tables de référence (countries, risk_zones,
     scoring_criteria, risk_thresholds, user_roles, users).
+
+    FIX: Ordre de suppression corrigé pour respecter les contraintes FK :
+      - Score.client_id  → FK vers customers.id SANS cascade → doit être supprimé avant customers
+      - Alert.client_id  → FK vers customers.id AVEC cascade → OK mais mieux explicitement
+      - AuditLog.client_id → FK vers customers.id SANS cascade, nullable=True
+        → les lignes non nulles bloquent la suppression des customers en PostgreSQL
+
+    Ordre correct : audit_logs → scores → alerts → transactions → customer_docs
+                    → customer_accounts → pep_list → customers
     """
     print("\n🧹 Nettoyage des tables de test...")
 
     counts = {
-        "transactions":     db.query(Transaction).count(),
-        "customer_docs":    db.query(CustomerDoc).count(),
-        "customer_accounts":db.query(CustomerAccount).count(),
-        "pep_list":         db.query(PepEntry).count(),
-        "customers":        db.query(Customer).count(),
+        "audit_logs (client_id non null)": db.query(AuditLog)
+            .filter(AuditLog.client_id.isnot(None)).count(),
+        "scores":              db.query(Score).count(),
+        "alerts":              db.query(Alert).count(),
+        "transactions":        db.query(Transaction).count(),
+        "customer_docs":       db.query(CustomerDoc).count(),
+        "customer_accounts":   db.query(CustomerAccount).count(),
+        "pep_list":            db.query(PepEntry).count(),
+        "customers":           db.query(Customer).count(),
     }
 
-    # Ordre FK : transactions → docs → comptes → pep → clients
+    # FIX: audit_logs référencent customers.id (nullable, mais PostgreSQL bloque
+    # si la valeur est non nulle et que la ligne customers est supprimée).
+    # On null-ise client_id dans audit_logs plutôt que de supprimer des logs utilisateur.
+    from sqlalchemy import update
+    db.execute(update(AuditLog).values(client_id=None))
+
+    # FIX: scores SANS cascade → supprimer avant customers
+    db.query(Score).delete(synchronize_session=False)
+
+    # alerts AVEC cascade → la suppression clients la déclencherait automatiquement,
+    # mais on supprime explicitement pour être sûr et tracer le count
+    db.query(Alert).delete(synchronize_session=False)
+
+    # Reste de la cascade standard
     db.query(Transaction).delete(synchronize_session=False)
     db.query(CustomerDoc).delete(synchronize_session=False)
     db.query(CustomerAccount).delete(synchronize_session=False)
@@ -244,7 +295,7 @@ def cleanup_magloire_tables(db: Session) -> None:
     db.commit()
 
     for table, count in counts.items():
-        print(f"   🗑  {table:<25} {count:>5} ligne(s) supprimée(s)")
+        print(f"   🗑  {table:<40} {count:>5} ligne(s)")
 
     print("   ✅ Nettoyage terminé\n")
 
@@ -284,6 +335,17 @@ def _random_revenu(rev_min: int, rev_max: int, profession_risk: str) -> Decimal:
     return Decimal(str(round(base * variation / 1000) * 1000))  # arrondi au millier
 
 
+# FIX: helpers géographiques béninois
+def _random_city() -> str:
+    """Retourne une vraie ville béninoise (pas fake.city() qui donne des villes françaises)."""
+    return random.choice(VILLES_BENINOISE)
+
+
+def _random_region() -> str:
+    """Retourne un vrai département béninois (pas fake.department() → données françaises)."""
+    return random.choice(DEPARTEMENTS_BENIN)
+
+
 # ══════════════════════════════════════════════════════════════════════════
 # 5. CRÉATION DES ENTITÉS
 # ══════════════════════════════════════════════════════════════════════════
@@ -307,8 +369,17 @@ def _create_customer(
     phone: Optional[str] = None,
     email: Optional[str] = None,
     status: str = "ACTIVE",
+    city: Optional[str] = None,
+    region: Optional[str] = None,
 ) -> Customer:
-    """Crée et flush un Customer sans commit."""
+    """
+    Crée et flush un Customer sans commit.
+
+    FIX: city et region utilisent maintenant des données béninoises
+    via _random_city() / _random_region() au lieu de fake.city() / fake.department()
+    (qui retournent des villes et départements français).
+    Les champs correspondent exactement au modèle Customer.
+    """
     customer = Customer(
         nom=nom,
         prenom=prenom,
@@ -319,10 +390,12 @@ def _create_customer(
         profession_name=profession_name,
         profession_risk=profession_risk,
         revenus_declares=revenus,
-        city=fake.city(),
-        region=fake.department(),
+        # FIX: ville et région béninoises
+        city=city or _random_city(),
+        region=region or _random_region(),
         latitude=str(round(random.uniform(6.2, 12.4), 4)),   # bbox Bénin
         longitude=str(round(random.uniform(0.8, 3.8), 4)),
+        # FIX: zone_geo et pays → Integer FK vers risk_zones.id et countries.id ✓
         zone_geo=zone.id,
         pays=country.id,
         statut_pep=statut_pep,
@@ -345,7 +418,10 @@ def _create_account(
     date_ouverture: Optional[date] = None,
     status: str = "ACTIF",
 ) -> CustomerAccount:
-    """Crée un compte bancaire pour le client."""
+    """
+    Crée un compte bancaire pour le client.
+    Champs : client_id, type_compte, solde_moyen, date_ouverture, status ✓
+    """
     if solde_moyen is None:
         rev = float(customer.revenus_declares or 0)
         solde_moyen = Decimal(str(round(rev * random.uniform(0.5, 3.0) / 1000) * 1000))
@@ -372,7 +448,11 @@ def _create_doc(
     valide: bool = True,
     expiration_delta_days: int = 730,   # +2 ans par défaut
 ) -> CustomerDoc:
-    """Crée un document KYC."""
+    """
+    Crée un document KYC.
+    Champs : client_id, type_doc, numero, date_expiration, valide ✓
+    expiration_delta_days négatif → document expiré (date passée) — intentionnel.
+    """
     doc = CustomerDoc(
         client_id=customer.id,
         type_doc=type_doc,
@@ -398,7 +478,11 @@ def _create_transaction(
     origine_txt: Optional[str] = None,
     destination_txt: Optional[str] = None,
 ) -> Transaction:
-    """Crée une transaction financière."""
+    """
+    Crée une transaction financière.
+    Champs : compte_id, montant, devise, type_op, date_op, canal,
+             origine, destination, origine_pays_id, destination_pays_id ✓
+    """
     tx = Transaction(
         compte_id=account.id,
         montant=montant,
@@ -424,7 +508,10 @@ def _add_to_pep_list(
     fonction: str = "Personnalité politique",
     source: str = "GIABA",
 ) -> PepEntry:
-    """Ajoute une entrée dans la liste PEP pour un client marqué PEP."""
+    """
+    Ajoute une entrée dans la liste PEP pour un client marqué PEP.
+    Champs : nom, prenom, fonction, date_debut, date_fin, source, active, pays ✓
+    """
     entry = PepEntry(
         nom=customer.nom,
         prenom=customer.prenom,
@@ -530,7 +617,7 @@ def create_scenario_amelie_soglo(db: Session, ref: Referentiels) -> Customer:
     """
     print("   🟢 Scénario A : Amélie SOGLO (risque FAIBLE)...")
 
-    zone = ref.zone_par_nom("CAPITALE")
+    zone    = ref.zone_par_nom("CAPITALE")
     country = ref.bj
 
     customer = _create_customer(
@@ -550,6 +637,8 @@ def create_scenario_amelie_soglo(db: Session, ref: Referentiels) -> Customer:
         phone="+22966110001",
         email="amelie.soglo@imf-test.bj",
         status="ACTIVE",
+        city="Cotonou",
+        region="Littoral",
     )
 
     # Compte épargne
@@ -596,7 +685,7 @@ def create_scenario_koffi_biaou(db: Session, ref: Referentiels) -> Customer:
     """
     print("   🟡 Scénario B : Koffi BIAOU (risque MOYEN)...")
 
-    zone = ref.zone_par_nom("FRONTIERE")
+    zone    = ref.zone_par_nom("FRONTIERE")
     country = ref.bj
 
     customer = _create_customer(
@@ -616,6 +705,8 @@ def create_scenario_koffi_biaou(db: Session, ref: Referentiels) -> Customer:
         phone="+22966110002",
         email="koffi.biaou@imf-test.bj",
         status="ACTIVE",
+        city="Malanville",
+        region="Alibori",
     )
 
     account = _create_account(
@@ -626,8 +717,8 @@ def create_scenario_koffi_biaou(db: Session, ref: Referentiels) -> Customer:
     )
 
     # 1 document valide, 1 expirant dans 20 jours (C6 pénalisé)
-    _create_doc(db, customer, type_doc="CNI",       valide=True,  expiration_delta_days=800)
-    _create_doc(db, customer, type_doc="PASSEPORT", valide=True,  expiration_delta_days=20)
+    _create_doc(db, customer, type_doc="CNI",       valide=True, expiration_delta_days=800)
+    _create_doc(db, customer, type_doc="PASSEPORT", valide=True, expiration_delta_days=20)
 
     # Transactions normales + pics (anomaly_factor=2.5)
     _generate_regular_transactions(db, account, customer, ref, nb_months=3, anomaly_factor=2.5)
@@ -668,7 +759,7 @@ def create_scenario_fatima_ouedraogo(db: Session, ref: Referentiels) -> Customer
     """
     print("   🔴 Scénario C : Fatima OUÉDRAOGO (risque ÉLEVÉ)...")
 
-    zone = ref.zone_par_nom("FRONTIERE")
+    zone    = ref.zone_par_nom("FRONTIERE")
     country = ref.bj
 
     customer = _create_customer(
@@ -688,9 +779,11 @@ def create_scenario_fatima_ouedraogo(db: Session, ref: Referentiels) -> Customer
         phone="+22966110003",
         email="fatima.ouedraogo@imf-test.bj",
         status="ACTIVE",
+        city="Malanville",
+        region="Alibori",
     )
 
-    # Entrée dans la liste PEP (récupération dynamique de l'ID pays)
+    # Entrée dans la liste PEP
     _add_to_pep_list(
         db, customer, country,
         fonction="Épouse de Ministre de l'Économie — Bénin",
@@ -713,7 +806,6 @@ def create_scenario_fatima_ouedraogo(db: Session, ref: Referentiels) -> Customer
                 expiration_delta_days=-30)    # EXPIRÉ depuis 30 jours
 
     # ── Smurfing : 6 transactions vers Nigeria (pays frontalier) ──────
-    # Montants ronds entre 400k et 490k, multiples de 10k
     _generate_smurfing_transactions(
         db, account,
         destination_country=ref.ng,
@@ -790,6 +882,11 @@ def _doc_profile(profession_risk: str, kyc_completion: int) -> list[dict]:
     """
     Retourne la liste des docs à créer avec leurs attributs.
     Plus le KYC est incomplet, plus les docs sont invalides/expirés.
+
+    FIX: kyc_completion < 25 retournait [] → certains clients n'avaient AUCUN document.
+    Le modèle CustomerDoc n'impose pas de document minimum, mais la règle métier
+    exige qu'au moins un document soit toujours enregistré pour tout client,
+    même si ce document est invalide/expiré (dossier ultra-incomplet).
     """
     docs = []
 
@@ -815,7 +912,16 @@ def _doc_profile(profession_risk: str, kyc_completion: int) -> list[dict]:
         docs.append({"type_doc": "CNI", "valide": valide,
                      "expiration_delta_days": random.randint(-180, 180)})
 
-    # kyc_completion < 25 → pas de document (dossier vide)
+    else:
+        # FIX: kyc_completion < 25 — dossier quasi-vide mais on crée quand même
+        # au moins 1 document invalide ou expiré pour que customer_docs soit toujours rempli.
+        # valide=False + date expirée → C6 (cohérence KYC) fortement pénalisé, ce qui est correct.
+        docs.append({
+            "type_doc": "CNI",
+            "valide": False,
+            "expiration_delta_days": random.randint(-365, -1),  # expiré
+        })
+
     return docs
 
 
@@ -855,7 +961,7 @@ def generate_random_clients(
         prof_code, prof_name, prof_risk, rev_min, rev_max = _pick_profession()
 
         # ── Zone & Pays ───────────────────────────────────────────────
-        zone = _pick_zone_for_risk(prof_risk, ref)
+        zone    = _pick_zone_for_risk(prof_risk, ref)
         country = _pick_country_for_zone(zone, ref)
 
         # ── Revenus ───────────────────────────────────────────────────
@@ -897,9 +1003,12 @@ def generate_random_clients(
             kyc_level=kyc_level,
             date_creation=date_creation,
             phone=phone,
+            # FIX: ville et région béninoises via les helpers corrigés
+            city=_random_city(),
+            region=_random_region(),
         )
 
-        # ── PEP list ─────────────────────────────────────────────────
+        # ── PEP list ──────────────────────────────────────────────────
         if is_pep:
             _add_to_pep_list(
                 db, customer, country,
@@ -912,6 +1021,7 @@ def generate_random_clients(
         account = _create_account(db, customer, type_compte=type_compte)
 
         # ── Documents KYC ─────────────────────────────────────────────
+        # FIX: _doc_profile garantit maintenant toujours au moins 1 doc
         for doc_kwargs in _doc_profile(prof_risk, kyc_completion):
             _create_doc(db, customer, **doc_kwargs)
 
@@ -960,21 +1070,32 @@ def print_stats(db: Session) -> None:
     total_pep      = db.query(Customer).filter(Customer.statut_pep == True).count()  # noqa: E712
     total_pep_list = db.query(PepEntry).count()
 
+    # FIX: CustomerDoc.valide (pas CustomerDoc.valide == False en tant que champ booléen)
+    # Docs invalides = valide=False OU date_expiration passée
     docs_invalides = db.query(CustomerDoc).filter(
         (CustomerDoc.valide == False) |  # noqa: E712
         (CustomerDoc.date_expiration < date.today())
     ).count()
 
+    # FIX: clients sans aucun document (doit être 0 après correction _doc_profile)
+    from sqlalchemy import select, exists
+    clients_sans_doc = db.query(Customer).filter(
+        ~exists(
+            select(CustomerDoc.id).where(CustomerDoc.client_id == Customer.id)
+        )
+    ).count()
+
     print("\n" + "═" * 55)
     print("📊  STATISTIQUES DES DONNÉES GÉNÉRÉES")
     print("═" * 55)
-    print(f"   Clients          : {total_clients:>6}")
-    print(f"   Comptes          : {total_comptes:>6}")
-    print(f"   Documents KYC    : {total_docs:>6}")
-    print(f"     dont invalides : {docs_invalides:>6}")
-    print(f"   Transactions     : {total_tx:>6}")
-    print(f"   Clients PEP      : {total_pep:>6}")
-    print(f"   Entrées PEP list : {total_pep_list:>6}")
+    print(f"   Clients            : {total_clients:>6}")
+    print(f"   Comptes            : {total_comptes:>6}")
+    print(f"   Documents KYC      : {total_docs:>6}")
+    print(f"     dont invalides   : {docs_invalides:>6}")
+    print(f"     clients sans doc : {clients_sans_doc:>6}  ← doit être 0")
+    print(f"   Transactions       : {total_tx:>6}")
+    print(f"   Clients PEP        : {total_pep:>6}")
+    print(f"   Entrées PEP list   : {total_pep_list:>6}")
     print("═" * 55)
 
     # Répartition par profession_risk
@@ -1001,6 +1122,9 @@ def print_stats(db: Session) -> None:
 
     print("═" * 55 + "\n")
 
+    if clients_sans_doc > 0:
+        print(f"⚠️  ATTENTION : {clients_sans_doc} client(s) sans document KYC détecté(s) !")
+
 
 # ══════════════════════════════════════════════════════════════════════════
 # 10. POINT D'ENTRÉE
@@ -1021,7 +1145,7 @@ def main(dry_run: bool = False) -> None:
         # 1. Charger les référentiels
         ref = Referentiels(db)
 
-        # 2. Nettoyer uniquement les tables de Magloire
+        # 2. Nettoyer uniquement les tables de Magloire (ordre FK corrigé)
         cleanup_magloire_tables(db)
 
         # 3. Créer les 3 scénarios obligatoires en premier

@@ -45,6 +45,9 @@ from app.models.risk_zones import RiskZone
 from app.models.scores import Score
 from app.models.scoring_criteria import ScoringCriteria
 from app.models.transactions import Transaction
+# FIX: import UserRole nécessaire pour créer les utilisateurs de test
+# (User.role_id est une FK vers user_roles, pas un champ string)
+from app.models.user_roles import UserRole
 from app.models.users import User
 
 
@@ -113,6 +116,15 @@ def auth_headers_compliance(db_session: Session) -> dict[str, str]:
 
 def _seed_references(db: Session) -> None:
     """Insère les données de référence minimales (idempotent)."""
+
+    # FIX: UserRole doit être seedé en premier car User.role_id est une FK vers user_roles.
+    # Le modèle User n'a pas de champ `role` string — il a `role_id` (FK) et
+    # `role` (relation SQLAlchemy vers UserRole).
+    for role_name in ("admin", "compliance_officer", "viewer"):
+        if not db.query(UserRole).filter(UserRole.name == role_name).first():
+            db.add(UserRole(name=role_name, permissions={}))
+    db.flush()
+
     if db.query(ScoringCriteria).count() == 0:
         for code, name, w in [
             ("C1", "Profil professionnel", 20),
@@ -136,23 +148,29 @@ def _seed_references(db: Session) -> None:
                        is_uemoa=False, is_border=True, is_fatf=False))
 
     if db.query(RiskZone).count() == 0:
-        db.add(RiskZone(name="URBAINE", risk_level="FAIBLE", source="TEST"))
-        db.add(RiskZone(name="FRONTIERE", risk_level="ELEVE", source="TEST"))
+        db.add(RiskZone(name="URBAINE",   risk_level="FAIBLE", source="TEST"))
+        db.add(RiskZone(name="FRONTIERE", risk_level="ELEVE",  source="TEST"))
 
     db.flush()
 
 
 def _get_or_create_test_user(db: Session, role: str = "admin") -> User:
-    """Retourne ou crée un utilisateur de test selon le rôle."""
+    """
+    Retourne ou crée un utilisateur de test selon le rôle.
+
+    FIX: Le modèle User n'a pas de champs `full_name`, `email` ni `hashed_password`.
+    Champs réels : login, password_hash, role_id (FK → user_roles), is_active.
+    Le rôle est une relation vers UserRole, pas un champ string.
+    """
     login = f"test_export_{role}"
     user = db.query(User).filter(User.login == login).first()
     if not user:
+        # Récupérer le UserRole correspondant (seedé dans _seed_references)
+        user_role = db.query(UserRole).filter(UserRole.name == role).first()
         user = User(
             login=login,
-            full_name=f"Test Export {role.title()}",
-            email=f"export_{role}_{uuid.uuid4().hex[:4]}@test.bj",
-            hashed_password="$2b$12$fakehashfortesting",
-            role=role,
+            password_hash="$2b$12$fakehashfortesting",   # FIX: password_hash (pas hashed_password)
+            role_id=user_role.id,                         # FIX: role_id FK (pas role string)
             is_active=True,
         )
         db.add(user)
@@ -165,7 +183,7 @@ def _create_full_customer(db: Session) -> tuple[Customer, CustomerAccount, Score
     Crée un client complet avec compte, score et alerte pour les tests d'export.
     Retourne (customer, account, score, alert).
     """
-    bj = db.query(Country).filter(Country.code_iso == "BJ").first()
+    bj   = db.query(Country).filter(Country.code_iso == "BJ").first()
     zone = db.query(RiskZone).filter(RiskZone.name == "FRONTIERE").first()
 
     customer = Customer(
@@ -233,7 +251,7 @@ def _create_full_customer(db: Session) -> tuple[Customer, CustomerAccount, Score
             "C1": 13.0, "C2": 13.0, "C3": 21.25,
             "C4": 7.5,  "C5": 15.0, "C6": 8.5,
         },
-        categorie="ÉLEVÉ",
+        categorie="ELEVE",        # FIX: sans accent, cohérent avec les valeurs du modèle
         is_current=True,
         calcule_par="AUTOMATED",
     )
@@ -241,14 +259,20 @@ def _create_full_customer(db: Session) -> tuple[Customer, CustomerAccount, Score
     db.flush()
 
     # Alerte SCORE_ELEVE
+    # FIX: champs corrects du modèle Alert :
+    #   client_id     (pas customer_id)
+    #   type_alerte   (pas alert_type)
+    #   statut        (pas status)
+    #   sar_declare   (pas sar_filed)
+    #   decision      (pas description)
+    #   → pas de champ risk_level dans Alert
+    #   → date_creation utilise server_default, pas besoin de le passer
     alert = Alert(
-        customer_id=customer.id,
-        alert_type="SCORE_ELEVE",
-        risk_level="HIGH",
-        description="Score de risque élevé (72/100) — seuil ÉLEVÉ atteint",
-        status="OPEN",
-        sar_filed=False,
-        created_at=datetime.now(timezone.utc) - timedelta(hours=2),
+        client_id=customer.id,
+        type_alerte="SCORE_ELEVE",
+        statut="OPEN",
+        decision="Score de risque élevé (72/100) — seuil ÉLEVÉ atteint",
+        sar_declare=False,
     )
     db.add(alert)
     db.flush()
@@ -651,14 +675,17 @@ class TestExportRoles:
     ):
         """
         Un utilisateur avec rôle 'viewer' (non autorisé) → 403.
+
+        FIX: User n'a pas de champ `full_name`, `email`, ni `hashed_password`.
+        Il faut passer role_id (FK vers user_roles) et password_hash.
         """
-        # Créer un utilisateur avec rôle non autorisé
+        # Récupérer le UserRole 'viewer' seedé dans _seed_references
+        viewer_role = db_session.query(UserRole).filter(UserRole.name == "viewer").first()
+
         viewer = User(
             login=f"viewer_{uuid.uuid4().hex[:6]}",
-            full_name="Viewer Test",
-            email=f"viewer_{uuid.uuid4().hex[:4]}@test.bj",
-            hashed_password="$2b$12$fakehash",
-            role="viewer",
+            password_hash="$2b$12$fakehash",   # FIX: password_hash (pas hashed_password)
+            role_id=viewer_role.id,             # FIX: role_id FK (pas role string)
             is_active=True,
         )
         db_session.add(viewer)
