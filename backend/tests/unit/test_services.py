@@ -60,7 +60,8 @@ class TestAuditService:
         db.commit()
 
         log = db.query(AuditLog).filter(
-            AuditLog.action == "SCORING_CALCULATE"
+            AuditLog.action == "SCORING_CALCULATE",
+            AuditLog.user_id == admin_user.id,
         ).first()
 
         assert log is not None

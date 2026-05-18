@@ -36,10 +36,12 @@ from typing import Generator
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
 
+from app.db.base import Base
 from app.main import app
-from app.db.session import get_db, SessionLocal
+from app.db.session import get_db
 from app.auth.security import create_access_token
 from app.models.alerts import Alert
 from app.models.countries import Country
@@ -54,22 +56,45 @@ from app.models.transactions import Transaction  # [Fix-2] import déplacé en t
 from app.models.users import User
 from app.models.user_roles import UserRole
 
+# ── Configuration DB test ──────────────────────────────────────────────────
+TEST_DATABASE_URL = "postgresql://marcos:dev_password_change_in_prod@localhost:5433/scoring_test_db"
+test_engine = create_engine(TEST_DATABASE_URL, echo=False, pool_pre_ping=True)
+TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
+
+_global_generate_iso = None
+
+@pytest.fixture(scope="module", autouse=True)
+def setup_iso_generator(generate_iso_code):
+    """Fixture qui initialise le générateur ISO global pour ce module."""
+    global _global_generate_iso
+    _global_generate_iso = generate_iso_code
+    yield
+    _global_generate_iso = None
+
+
+@pytest.fixture(scope="module", autouse=True)
+def setup_db():
+    """Crée les tables au début du module de tests."""
+    Base.metadata.create_all(bind=test_engine)
+    yield
+
 
 # ---------------------------------------------------------------------------
 # Fixtures DB & Client
 # ---------------------------------------------------------------------------
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="function")
 def db_session() -> Generator[Session, None, None]:
-    """Session DB pour la durée du module de tests d'intégration."""
-    session = SessionLocal()
+    """Session DB fraîche par test."""
+    connection = test_engine.connect()
+    session = Session(bind=connection)
     _seed_all(session)
     yield session
-    session.rollback()
     session.close()
+    connection.close()
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="function")
 def test_client(db_session: Session) -> TestClient:
     """Client FastAPI avec override de la dépendance DB."""
 
@@ -82,7 +107,7 @@ def test_client(db_session: Session) -> TestClient:
     app.dependency_overrides.clear()
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="function")
 def admin_token(db_session: Session) -> str:
     """Génère un JWT valide pour un utilisateur admin de test."""
     user = _get_or_create_test_user(db_session)
@@ -90,7 +115,7 @@ def admin_token(db_session: Session) -> str:
     return token
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="function")
 def auth_headers(admin_token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {admin_token}"}
 
@@ -153,12 +178,14 @@ def _get_or_create_test_user(db: Session) -> User:
 
 def _create_low_risk_customer(db: Session) -> Customer:
     """Crée un client à faible risque pour les tests."""
+    global _global_generate_iso
     zone = RiskZone(name="Zone_test_faible", risk_level="FAIBLE", source="TEST")
     db.add(zone)
     db.flush()
 
+    iso_code = _global_generate_iso("T") if _global_generate_iso else f"T{uuid.uuid4().hex[:2].upper()}"
     country = Country(
-        code_iso=f"T{uuid.uuid4().hex[:2].upper()}",
+        code_iso=iso_code,
         name="TestPays",
         is_uemoa=True,
         is_border=False,
@@ -213,12 +240,14 @@ def _create_low_risk_customer(db: Session) -> Customer:
 
 def _create_high_risk_customer(db: Session) -> Customer:
     """Crée un client à risque élevé (PEP + activité à risque) pour les tests."""
+    global _global_generate_iso
     zone = RiskZone(name="Zone_test_eleve", risk_level="ELEVE", source="TEST")
     db.add(zone)
     db.flush()
 
+    iso_code = _global_generate_iso("F") if _global_generate_iso else f"F{uuid.uuid4().hex[:2].upper()}"
     country = Country(
-        code_iso=f"F{uuid.uuid4().hex[:2].upper()}",
+        code_iso=iso_code,
         name="PaysFATF_Test",
         is_uemoa=False,
         is_border=True,

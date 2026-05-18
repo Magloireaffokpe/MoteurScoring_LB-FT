@@ -23,7 +23,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.config import settings
+from app.db.base import Base
 from app.models.countries import Country
 from app.models.customer_accounts import CustomerAccount
 from app.models.customer_docs import CustomerDoc  # fichier : customer_docs.py
@@ -39,31 +39,32 @@ from app.services.scoring import ScoringEngine
 # Fixtures
 # ---------------------------------------------------------------------------
 
+TEST_DATABASE_URL = "postgresql://marcos:dev_password_change_in_prod@localhost:5433/scoring_test_db"
+
 @pytest.fixture(scope="module")
 def db_engine():
-    """Crée un engine PostgreSQL pour la durée du module de tests."""
-    engine = create_engine(settings.DATABASE_URL, echo=False, pool_pre_ping=True)
+    """Crée un engine PostgreSQL et les tables pour la durée du module de tests."""
+    engine = create_engine(TEST_DATABASE_URL, echo=False)
+    Base.metadata.create_all(bind=engine)
     yield engine
     engine.dispose()
 
 
 @pytest.fixture()
-def db(db_engine) -> Generator[Session, None, None]:
+def db(db_engine, generate_iso_code) -> Generator[Session, None, None]:
     """
-    Fournit une session DB avec rollback automatique après chaque test.
-    Utilise un SAVEPOINT pour isoler les modifications sans toucher la DB réelle.
+    Fournit une session DB fraîche par test.
+    Les tables sont créées au niveau du module, les données sont isolées
+    par le rollback implicite de la fermeture de connexion.
     """
     connection = db_engine.connect()
-    transaction = connection.begin()
     session = Session(bind=connection)
 
-    # Injecte les paramètres de scoring par défaut
     _seed_scoring_params(session)
 
     yield session
 
     session.close()
-    transaction.rollback()
     connection.close()
 
 
@@ -93,13 +94,27 @@ def _seed_scoring_params(db: Session) -> None:
     db.flush()
 
 
+# Stockage global de generate_iso_code pour l'utiliser dans les helpers
+_global_generate_iso = None
+
+@pytest.fixture(scope="module", autouse=True)
+def setup_iso_generator(generate_iso_code):
+    """Fixture qui initialise le générateur ISO global pour ce module."""
+    global _global_generate_iso
+    _global_generate_iso = generate_iso_code
+    yield
+    _global_generate_iso = None
+
+
 # ---------------------------------------------------------------------------
 # Helpers constructeurs de fixtures
 # ---------------------------------------------------------------------------
 
 def _make_country(db: Session, *, is_border=False, is_fatf=False, is_uemoa=True) -> Country:
+    global _global_generate_iso
+    iso_code = _global_generate_iso("T") if _global_generate_iso else f"T{uuid.uuid4().hex[:2].upper()}"
     country = Country(
-        code_iso=f"T{str(uuid.uuid4())[:2].upper()}",
+        code_iso=iso_code,  # ← Utilise le générateur global ou fallback
         name="TestPays",
         is_uemoa=is_uemoa,
         is_border=is_border,

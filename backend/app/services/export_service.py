@@ -1059,21 +1059,12 @@ def generate_sar_pdf(
     # FIX: champs corrects du modèle Alert :
     # type_alerte / statut / sar_declare / date_creation / decision
     alert_data = [
-<<<<<<< Updated upstream
-        ["Type d'alerte",     alert.alert_type or "—",
-         "Niveau risque",     alert.risk_level or "—"],
-        ["Date détection",    _fmt_datetime(alert.created_at),
-         "Statut",            alert.status or "—"],
-        ["Description",       Paragraph(alert.description or "—",
-                                        styles["body"]), "", ""],
-=======
         ["Type d'alerte",  alert.type_alerte or "—",
          "Statut",         alert.statut or "—"],
         ["Date détection", _fmt_datetime(alert.date_creation),
          "SAR déclaré",    "Oui" if alert.sar_declare else "Non"],
         ["Décision/Motif", Paragraph(alert.decision or "—",
                                      styles["body"]), "", ""],
->>>>>>> Stashed changes
     ]
     alert_t = Table(alert_data, colWidths=[3.5 * cm, 5.5 * cm, 3 * cm, 5 * cm])
     alert_t.setStyle(TableStyle([
