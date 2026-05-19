@@ -268,6 +268,69 @@ const MOCK_SCORES = {
   ],
 };
 
+let MOCK_TRANSACTIONS = {
+  "c-001": [
+    {
+      id: "tx-001",
+      compte_id: "a-001",
+      montant: 500000.0,
+      devise: "XOF",
+      type_op: "DEPOT",
+      date_op: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+      canal: "GUICHET",
+      origine: "BIAOU Koffi",
+      destination: "Compte Courant",
+      origine_pays_id: 1,
+      destination_pays_id: 1,
+    },
+    {
+      id: "tx-002",
+      compte_id: "a-001",
+      montant: 120000.0,
+      devise: "XOF",
+      type_op: "RETRAIT",
+      date_op: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+      canal: "ATM",
+      origine: "Compte Courant",
+      destination: "ATM Malanville",
+      origine_pays_id: 1,
+      destination_pays_id: 1,
+    }
+  ],
+  "c-002": [
+    {
+      id: "tx-003",
+      compte_id: "a-002",
+      montant: 85000.0,
+      devise: "XOF",
+      type_op: "DEPOT",
+      date_op: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+      canal: "MOBILE",
+      origine: "SOGLO Amélie",
+      destination: "Compte Épargne",
+      origine_pays_id: 1,
+      destination_pays_id: 1,
+    }
+  ],
+  "c-003": [
+    {
+      id: "tx-004",
+      compte_id: "a-003",
+      montant: 1500000.0,
+      devise: "XOF",
+      type_op: "VIREMENT",
+      date_op: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+      canal: "INTERNET",
+      origine: "Société X",
+      destination: "OUEDRAOGO Fatima",
+      origine_pays_id: 2,
+      destination_pays_id: 1,
+    }
+  ],
+  "c-004": [],
+  "c-005": [],
+};
+
 const MOCK_ALERTS = [
   {
     id: "al-001",
@@ -587,6 +650,51 @@ export function setupMocks() {
       return config;
     }
 
+    // ── Transactions ──────────────────────────────────────────────
+    if (method === "GET" && url.match(/^\/api\/customers\/[^/]+\/transactions$/)) {
+      const clientId = url.split("/")[3];
+      const txs = MOCK_TRANSACTIONS[clientId] || [];
+      config.adapter = async () => ({
+        data: { items: txs, total: txs.length, skip: 0, limit: 100 },
+        status: 200,
+        statusText: "OK",
+        headers: {},
+        config,
+      });
+      return config;
+    }
+
+    if (method === "POST" && url.match(/^\/api\/customers\/[^/]+\/transactions$/)) {
+      const clientId = url.split("/")[3];
+      const body = typeof config.data === "string" ? JSON.parse(config.data || "{}") : (config.data || {});
+      const newTx = {
+        id: `tx-${Date.now()}`,
+        compte_id: body.compte_id || `acc-${Date.now()}`,
+        montant: Number(body.montant || 0),
+        devise: body.devise || "XOF",
+        type_op: body.type_op || "DEPOT",
+        date_op: body.date_op || new Date().toISOString(),
+        canal: body.canal || "GUICHET",
+        origine: body.origine || "Client",
+        destination: body.destination || "Compte",
+        origine_pays_id: Number(body.origine_pays_id || 1),
+        destination_pays_id: Number(body.destination_pays_id || 1),
+      };
+      if (!MOCK_TRANSACTIONS[clientId]) {
+        MOCK_TRANSACTIONS[clientId] = [];
+      }
+      MOCK_TRANSACTIONS[clientId].unshift(newTx);
+
+      config.adapter = async () => ({
+        data: newTx,
+        status: 201,
+        statusText: "Created",
+        headers: {},
+        config,
+      });
+      return config;
+    }
+
     // ── Scores ────────────────────────────────────────────────────
     if (method === "GET" && url.match(/^\/api\/customers\/[^/]+\/scores$/)) {
       const clientId = url.split("/")[3];
@@ -648,6 +756,21 @@ export function setupMocks() {
           },
           scored_by: "AUTOMATED",
           scored_at: new Date().toISOString(),
+        },
+        status: 200,
+        statusText: "OK",
+        headers: {},
+        config,
+      });
+      return config;
+    }
+
+    if (method === "POST" && url === "/api/scoring/rescore-all") {
+      config.adapter = async () => ({
+        data: {
+          message: "Rescoring global terminé",
+          rescored: 5,
+          critical: 1,
         },
         status: 200,
         statusText: "OK",

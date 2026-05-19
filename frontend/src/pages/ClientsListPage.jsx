@@ -9,7 +9,7 @@ import { Button } from "../components/Button";
 import { Badge } from "../components/Badge";
 import { Table, Pagination } from "../components/Table";
 
-import { customerService } from "../services/customerService";
+import { customerService, referentialService } from "../services/customerService";
 import { scoringService } from "../services/scoringService";
 import { usePagination } from "../hooks/usePagination";
 
@@ -56,6 +56,16 @@ export default function ClientsListPage() {
   const [kyc, setKyc] = useState("");
   const [status, setStatus] = useState("");
   const [pep, setPep] = useState("");
+  const [zoneGeo, setZoneGeo] = useState("");
+  const [zones, setZones] = useState([]);
+
+  // Load geographic risk zones
+  useEffect(() => {
+    referentialService
+      .riskZones()
+      .then((res) => setZones(res || []))
+      .catch(() => {});
+  }, []);
 
   const load = useCallback(
     async (p = page) => {
@@ -67,10 +77,30 @@ export default function ClientsListPage() {
           ...(search && { search }),
           ...(kyc && { kyc_level: kyc }),
           ...(status && { status }),
-          ...(pep && { statut_pep: pep }),
+          ...(pep !== "" && { statut_pep: pep === "true" }),
+          ...(zoneGeo && { zone_geo: Number(zoneGeo) }),
         };
         const data = await customerService.list(params);
-        setClients(data.items || []);
+        const items = data.items || [];
+
+        // Parallel fetch of the current score and risk category for each customer
+        const itemsWithScores = await Promise.all(
+          items.map(async (client) => {
+            try {
+              const scoreRes = await customerService.getScores(client.id, { limit: 1 });
+              const latestScoreObj = scoreRes?.items?.[0] || null;
+              return {
+                ...client,
+                score: latestScoreObj?.global_score ?? null,
+                risk_category: latestScoreObj?.risk_category ?? null,
+              };
+            } catch {
+              return { ...client, score: null, risk_category: null };
+            }
+          })
+        );
+
+        setClients(itemsWithScores);
         setTotal(data.total || 0);
       } catch {
         toast.error("Erreur chargement clients");
@@ -78,7 +108,7 @@ export default function ClientsListPage() {
         setLoading(false);
       }
     },
-    [page, pageSize, search, kyc, status, pep],
+    [page, pageSize, search, kyc, status, pep, zoneGeo],
   );
 
   // Debounce search
@@ -88,7 +118,7 @@ export default function ClientsListPage() {
       load(1);
     }, 400);
     return () => clearTimeout(t);
-  }, [search, kyc, status, pep]); // eslint-disable-line
+  }, [search, kyc, status, pep, zoneGeo]); // eslint-disable-line
 
   useEffect(() => {
     load(page);
@@ -150,7 +180,7 @@ export default function ClientsListPage() {
       key: "risk_category",
       label: "Catégorie",
       render: (v, r) => {
-        const cat = normalizeCategory(r.kyc_level);
+        const cat = normalizeCategory(r.risk_category);
         return cat ? <Badge type={cat}>{cat}</Badge> : "—";
       },
     },
@@ -217,7 +247,7 @@ export default function ClientsListPage() {
             <input
               className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-[#E5E7EB] text-sm bg-white
                          focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]/30 focus:border-[#1E3A8A]"
-              placeholder="Rechercher…"
+              placeholder="Rechercher par nom, prénom, téléphone..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -229,9 +259,9 @@ export default function ClientsListPage() {
               onClick={() => setShowFilter((s) => !s)}
             >
               <Filter className="w-4 h-4" /> Filtres
-              {(kyc || status || pep) && (
+              {(kyc || status || pep || zoneGeo) && (
                 <span className="ml-1 w-4 h-4 bg-[#1E3A8A] text-white text-[10px] rounded-full flex items-center justify-center">
-                  {[kyc, status, pep].filter(Boolean).length}
+                  {[kyc, status, pep, zoneGeo].filter(Boolean).length}
                 </span>
               )}
             </Button>
@@ -286,6 +316,27 @@ export default function ClientsListPage() {
                   </select>
                 </div>
               ))}
+
+              {/* Filtre Zone Géographique */}
+              <div className="flex-1 min-w-[150px]">
+                <label className="text-sm font-medium text-[#374151] font-sans block mb-1.5">
+                  Zone géographique
+                </label>
+                <select
+                  className="w-full px-3 py-2.5 rounded-xl border border-[#E5E7EB] text-sm bg-white
+                             focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]/30"
+                  value={zoneGeo}
+                  onChange={(e) => setZoneGeo(e.target.value)}
+                >
+                  <option value="">Toutes les zones</option>
+                  {zones.map((z) => (
+                    <option key={z.id} value={z.id}>
+                      {z.name} ({z.risk_level})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <Button
                 variant="ghost"
                 size="sm"
@@ -293,6 +344,7 @@ export default function ClientsListPage() {
                   setKyc("");
                   setStatus("");
                   setPep("");
+                  setZoneGeo("");
                   setSearch("");
                 }}
               >

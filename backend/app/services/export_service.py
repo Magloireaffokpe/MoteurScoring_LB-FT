@@ -77,6 +77,7 @@ def _build_styles() -> dict[str, ParagraphStyle]:
             "logo",
             fontName="Helvetica-Bold",
             fontSize=28,
+            leading=34,
             textColor=C_NAVY,
             alignment=TA_CENTER,
             spaceAfter=2,
@@ -85,6 +86,7 @@ def _build_styles() -> dict[str, ParagraphStyle]:
             "logo_sub",
             fontName="Helvetica",
             fontSize=10,
+            leading=12,
             textColor=C_GREEN,
             alignment=TA_CENTER,
             spaceAfter=2,
@@ -93,6 +95,7 @@ def _build_styles() -> dict[str, ParagraphStyle]:
             "imf_coords",
             fontName="Helvetica",
             fontSize=8,
+            leading=10,
             textColor=C_DGRAY,
             alignment=TA_CENTER,
             spaceAfter=8,
@@ -101,6 +104,7 @@ def _build_styles() -> dict[str, ParagraphStyle]:
             "doc_title",
             fontName="Helvetica-Bold",
             fontSize=14,
+            leading=18,
             textColor=C_WHITE,
             alignment=TA_CENTER,
             spaceAfter=4,
@@ -109,6 +113,7 @@ def _build_styles() -> dict[str, ParagraphStyle]:
             "section_header",
             fontName="Helvetica-Bold",
             fontSize=11,
+            leading=14,
             textColor=C_WHITE,
             alignment=TA_LEFT,
             leftIndent=6,
@@ -119,6 +124,7 @@ def _build_styles() -> dict[str, ParagraphStyle]:
             "body",
             fontName="Helvetica",
             fontSize=9,
+            leading=12,
             textColor=C_DGRAY,
             spaceAfter=3,
         ),
@@ -126,6 +132,7 @@ def _build_styles() -> dict[str, ParagraphStyle]:
             "body_bold",
             fontName="Helvetica-Bold",
             fontSize=9,
+            leading=12,
             textColor=C_DGRAY,
             spaceAfter=3,
         ),
@@ -133,6 +140,7 @@ def _build_styles() -> dict[str, ParagraphStyle]:
             "score_big",
             fontName="Helvetica-Bold",
             fontSize=48,
+            leading=54,
             alignment=TA_CENTER,
             spaceAfter=4,
         ),
@@ -140,6 +148,7 @@ def _build_styles() -> dict[str, ParagraphStyle]:
             "score_cat",
             fontName="Helvetica-Bold",
             fontSize=16,
+            leading=20,
             alignment=TA_CENTER,
             spaceAfter=8,
         ),
@@ -147,6 +156,7 @@ def _build_styles() -> dict[str, ParagraphStyle]:
             "footer",
             fontName="Helvetica",
             fontSize=7,
+            leading=9,
             textColor=C_MGRAY,
             alignment=TA_CENTER,
         ),
@@ -154,6 +164,7 @@ def _build_styles() -> dict[str, ParagraphStyle]:
             "sar_title",
             fontName="Helvetica-Bold",
             fontSize=16,
+            leading=20,
             textColor=C_NAVY,
             alignment=TA_CENTER,
             spaceAfter=6,
@@ -162,6 +173,7 @@ def _build_styles() -> dict[str, ParagraphStyle]:
             "sar_ref",
             fontName="Helvetica-Bold",
             fontSize=10,
+            leading=12,
             textColor=C_RED,
             alignment=TA_CENTER,
             spaceAfter=12,
@@ -170,6 +182,7 @@ def _build_styles() -> dict[str, ParagraphStyle]:
             "warning",
             fontName="Helvetica-Bold",
             fontSize=9,
+            leading=12,
             textColor=C_RED,
             spaceAfter=4,
         ),
@@ -508,22 +521,54 @@ def generate_customer_pdf(
     )
 
     kyc_rows = [
-        ["Nom complet",      f"{customer.prenom} {customer.nom}",
-         "Date de naissance", _fmt_date(customer.date_naissance)],
-        ["Téléphone",        customer.phone or "—",
-         "Email",            customer.email or "—"],
-        ["Profession",       customer.profession_name or "—",
-         "Code métier",      customer.profession_code or "—"],
-        ["Risque profession", customer.profession_risk or "—",
-         "Revenus déclarés", _fmt_montant(customer.revenus_declares)],
-        ["Ville",            customer.city or "—",
-         "Région",           customer.region or "—"],
-        ["Zone géographique", zone.name if zone else "—",
-         "Niveau zone",      zone.risk_level if zone else "—"],
-        ["Statut PEP",       Paragraph(statut_pep_str, styles["body"]),
-         "KYC complétion",   f"{customer.kyc_completion or 0} %"],
-        ["Date d'adhésion",  _fmt_datetime(customer.date_creation),
-         "Statut compte",    customer.status or "—"],
+        [
+            Paragraph("<b>Nom complet</b>", styles["body"]),
+            Paragraph(f"{customer.prenom} {customer.nom}", styles["body"]),
+            Paragraph("<b>Date de naissance</b>", styles["body"]),
+            Paragraph(_fmt_date(customer.date_naissance), styles["body"])
+        ],
+        [
+            Paragraph("<b>Téléphone</b>", styles["body"]),
+            Paragraph(customer.phone or "—", styles["body"]),
+            Paragraph("<b>Email</b>", styles["body"]),
+            Paragraph(customer.email or "—", styles["body"])
+        ],
+        [
+            Paragraph("<b>Profession</b>", styles["body"]),
+            Paragraph(customer.profession_name or "—", styles["body"]),
+            Paragraph("<b>Code métier</b>", styles["body"]),
+            Paragraph(customer.profession_code or "—", styles["body"])
+        ],
+        [
+            Paragraph("<b>Risque profession</b>", styles["body"]),
+            Paragraph(customer.profession_risk or "—", styles["body"]),
+            Paragraph("<b>Revenus déclarés</b>", styles["body"]),
+            Paragraph(_fmt_montant(customer.revenus_declares), styles["body"])
+        ],
+        [
+            Paragraph("<b>Ville</b>", styles["body"]),
+            Paragraph(customer.city or "—", styles["body"]),
+            Paragraph("<b>Région</b>", styles["body"]),
+            Paragraph(customer.region or "—", styles["body"])
+        ],
+        [
+            Paragraph("<b>Zone géographique</b>", styles["body"]),
+            Paragraph(zone.name if zone else "—", styles["body"]),
+            Paragraph("<b>Niveau zone</b>", styles["body"]),
+            Paragraph(zone.risk_level if zone else "—", styles["body"])
+        ],
+        [
+            Paragraph("<b>Statut PEP</b>", styles["body"]),
+            Paragraph(statut_pep_str, styles["body"]),
+            Paragraph("<b>KYC complétion</b>", styles["body"]),
+            Paragraph(f"{customer.kyc_completion or 0} %", styles["body"])
+        ],
+        [
+            Paragraph("<b>Date d'adhésion</b>", styles["body"]),
+            Paragraph(_fmt_datetime(customer.date_creation), styles["body"]),
+            Paragraph("<b>Statut compte</b>", styles["body"]),
+            Paragraph(customer.status or "—", styles["body"])
+        ],
     ]
 
     kyc_t = Table(
@@ -531,12 +576,6 @@ def generate_customer_pdf(
         colWidths=[3.5 * cm, 5 * cm, 3.5 * cm, 5 * cm],
     )
     kyc_t.setStyle(TableStyle([
-        ("FONTNAME",      (0, 0), (-1, -1), "Helvetica"),
-        ("FONTSIZE",      (0, 0), (-1, -1), 8),
-        ("FONTNAME",      (0, 0), (0, -1), "Helvetica-Bold"),  # labels col 0
-        ("FONTNAME",      (2, 0), (2, -1), "Helvetica-Bold"),  # labels col 2
-        ("TEXTCOLOR",     (0, 0), (0, -1), C_NAVY),
-        ("TEXTCOLOR",     (2, 0), (2, -1), C_NAVY),
         ("BACKGROUND",    (0, 0), (0, -1), colors.HexColor("#EBF5FB")),
         ("BACKGROUND",    (2, 0), (2, -1), colors.HexColor("#EBF5FB")),
         ("GRID",          (0, 0), (-1, -1), 0.5, C_MGRAY),
@@ -603,7 +642,12 @@ def generate_customer_pdf(
         for code in ("C1", "C2", "C3", "C4", "C5", "C6"):
             val = float(detail.get(code, 0))
             pct = f"{(val / score_val * 100):.1f} %" if score_val > 0 else "—"
-            c_rows.append([code, c_labels.get(code, ""), f"{val:.2f}", pct])
+            c_rows.append([
+                Paragraph(code, styles["body"]),
+                Paragraph(c_labels.get(code, ""), styles["body"]),
+                Paragraph(f"{val:.2f}", styles["body"]),
+                Paragraph(pct, styles["body"])
+            ])
 
         elements.append(_standard_table(
             c_headers, c_rows,
@@ -648,11 +692,11 @@ def generate_customer_pdf(
         for s in score_history:
             courant = "✓" if s.is_current else ""
             h_rows.append([
-                _fmt_datetime(s.date_calcul),
-                str(s.score_global),
-                _category_label(s.categorie),
-                s.calcule_par or "AUTOMATED",
-                courant,
+                Paragraph(_fmt_datetime(s.date_calcul), styles["body"]),
+                Paragraph(str(s.score_global), styles["body"]),
+                Paragraph(_category_label(s.categorie), styles["body"]),
+                Paragraph(s.calcule_par or "AUTOMATED", styles["body"]),
+                Paragraph(courant, styles["body"]),
             ])
         elements.append(_standard_table(
             ["Date calcul", "Score", "Catégorie", "Agent", "Courant"],
@@ -678,10 +722,10 @@ def generate_customer_pdf(
             # FIX: champs corrects du modèle Alert
             # type_alerte / date_creation / statut / sar_declare
             a_rows.append([
-                a.type_alerte or "—",
-                _fmt_datetime(a.date_creation),
-                a.statut or "—",
-                "Oui" if a.sar_declare else "Non",
+                Paragraph(a.type_alerte or "—", styles["body"]),
+                Paragraph(_fmt_datetime(a.date_creation), styles["body"]),
+                Paragraph(a.statut or "—", styles["body"]),
+                Paragraph("Oui" if a.sar_declare else "Non", styles["body"]),
             ])
         elements.append(_standard_table(
             ["Type", "Date création", "Statut", "SAR déposé"],
@@ -809,6 +853,9 @@ def generate_transactions_csv(
 
     # En-têtes en français
     writer.writerow([
+        "ID Client",
+        "Nom Client",
+        "Prénom Client",
         "Date opération",
         "Montant",
         "Devise",
@@ -835,6 +882,9 @@ def generate_transactions_csv(
             date_str = d.strftime("%d/%m/%Y %H:%M")
 
         writer.writerow([
+            str(customer.id),
+            customer.nom,
+            customer.prenom,
             date_str,
             f"{float(tx.montant):.2f}" if tx.montant is not None else "",
             tx.devise or "XOF",
@@ -920,8 +970,8 @@ def generate_sar_pdf(
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
-        leftMargin=2.5 * cm, rightMargin=2.5 * cm,
-        topMargin=2 * cm, bottomMargin=2.5 * cm,
+        leftMargin=2.0 * cm, rightMargin=2.0 * cm,
+        topMargin=1.5 * cm, bottomMargin=2.0 * cm,
         title=f"SAR — {sar_number}",
         author="RiskGuard",
         subject="Déclaration de Soupçon CENTIF",
@@ -933,10 +983,10 @@ def generate_sar_pdf(
     header_sar = Table(
         [[
             Paragraph("RÉPUBLIQUE DU BÉNIN", ParagraphStyle(
-                "rep", fontName="Helvetica-Bold", fontSize=9,
+                "rep", fontName="Helvetica-Bold", fontSize=9, leading=11,
                 textColor=C_NAVY, alignment=TA_CENTER)),
-            Paragraph("CELLULE NATIONALE DE TRAITEMENT\nDES INFORMATIONS FINANCIÈRES", ParagraphStyle(
-                "centif_h", fontName="Helvetica-Bold", fontSize=9,
+            Paragraph("CELLULE NATIONALE DE TRAITEMENT<br/>DES INFORMATIONS FINANCIÈRES", ParagraphStyle(
+                "centif_h", fontName="Helvetica-Bold", fontSize=9, leading=11,
                 textColor=C_NAVY, alignment=TA_CENTER)),
         ]],
         colWidths=[8 * cm, 9 * cm],
@@ -957,7 +1007,7 @@ def generate_sar_pdf(
     ))
     elements.append(Paragraph(
         "Article 26 — Loi n°2006-14 du 31 octobre 2006 portant LBC/FT",
-        ParagraphStyle("sar_law", fontName="Helvetica-Oblique", fontSize=9,
+        ParagraphStyle("sar_law", fontName="Helvetica-Oblique", fontSize=9, leading=11,
                        textColor=C_DGRAY, alignment=TA_CENTER, spaceAfter=4),
     ))
     elements.append(HRFlowable(width="100%", thickness=2, color=C_NAVY, spaceAfter=6))
@@ -984,23 +1034,31 @@ def generate_sar_pdf(
     elements.append(Spacer(1, 4))
     decl_t = Table(
         [
-            ["Institution", "Microfinance Béninoise SA",
-             "Secteur", "Microfinance"],
-            ["Adresse", "01 BP 1234 Cotonou, Bénin",
-             "Contact", "contact@riskguard.bj"],
-            ["Agent déclarant", agent_name,
-             "Système", "RiskGuard v1.2"],
+            [
+                Paragraph("<b>Institution</b>", styles["body"]),
+                Paragraph("Microfinance Béninoise SA", styles["body"]),
+                Paragraph("<b>Secteur</b>", styles["body"]),
+                Paragraph("Microfinance", styles["body"])
+            ],
+            [
+                Paragraph("<b>Adresse</b>", styles["body"]),
+                Paragraph("01 BP 1234 Cotonou, Bénin", styles["body"]),
+                Paragraph("<b>Contact</b>", styles["body"]),
+                Paragraph("contact@riskguard.bj", styles["body"])
+            ],
+            [
+                Paragraph("<b>Agent déclarant</b>", styles["body"]),
+                Paragraph(agent_name, styles["body"]),
+                Paragraph("<b>Système</b>", styles["body"]),
+                Paragraph("RiskGuard v1.2", styles["body"])
+            ],
         ],
-        colWidths=[3.5 * cm, 6 * cm, 3 * cm, 4.5 * cm],
+        colWidths=[3.5 * cm, 5.0 * cm, 3.5 * cm, 5.0 * cm],
     )
     decl_t.setStyle(TableStyle([
-        ("FONTNAME",  (0, 0), (-1, -1), "Helvetica"),
-        ("FONTNAME",  (0, 0), (0, -1), "Helvetica-Bold"),
-        ("FONTNAME",  (2, 0), (2, -1), "Helvetica-Bold"),
-        ("TEXTCOLOR", (0, 0), (0, -1), C_NAVY),
-        ("TEXTCOLOR", (2, 0), (2, -1), C_NAVY),
-        ("FONTSIZE",  (0, 0), (-1, -1), 8),
         ("GRID",      (0, 0), (-1, -1), 0.5, C_MGRAY),
+        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#EBF5FB")),
+        ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#EBF5FB")),
         ("TOPPADDING", (0, 0), (-1, -1), 5),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
         ("LEFTPADDING", (0, 0), (-1, -1), 6),
@@ -1021,27 +1079,45 @@ def generate_sar_pdf(
     pep_str = "OUI — Personne Politiquement Exposée" if customer.statut_pep else "Non"
 
     person_data = [
-        ["Nom et prénom", f"{customer.prenom} {customer.nom}",
-         "Date naissance", _fmt_date(customer.date_naissance)],
-        ["Téléphone", customer.phone or "—",
-         "Email", customer.email or "—"],
-        ["Profession", customer.profession_name or "—",
-         "Code risque", customer.profession_risk or "—"],
-        ["Revenus déclarés", _fmt_montant(customer.revenus_declares),
-         "Statut PEP", pep_str],
-        ["Score LBC/FT", score_str,
-         "Catégorie risque", cat_str],
-        ["Ville", customer.city or "—",
-         "ID client", str(customer.id)[:18] + "..."],
+        [
+            Paragraph("<b>Nom et prénom</b>", styles["body"]),
+            Paragraph(f"{customer.prenom} {customer.nom}", styles["body"]),
+            Paragraph("<b>Date naissance</b>", styles["body"]),
+            Paragraph(_fmt_date(customer.date_naissance), styles["body"])
+        ],
+        [
+            Paragraph("<b>Téléphone</b>", styles["body"]),
+            Paragraph(customer.phone or "—", styles["body"]),
+            Paragraph("<b>Email</b>", styles["body"]),
+            Paragraph(customer.email or "—", styles["body"])
+        ],
+        [
+            Paragraph("<b>Profession</b>", styles["body"]),
+            Paragraph(customer.profession_name or "—", styles["body"]),
+            Paragraph("<b>Code risque</b>", styles["body"]),
+            Paragraph(customer.profession_risk or "—", styles["body"])
+        ],
+        [
+            Paragraph("<b>Revenus déclarés</b>", styles["body"]),
+            Paragraph(_fmt_montant(customer.revenus_declares), styles["body"]),
+            Paragraph("<b>Statut PEP</b>", styles["body"]),
+            Paragraph(pep_str, styles["body"])
+        ],
+        [
+            Paragraph("<b>Score LBC/FT</b>", styles["body"]),
+            Paragraph(score_str, styles["body"]),
+            Paragraph("<b>Catégorie risque</b>", styles["body"]),
+            Paragraph(cat_str, styles["body"])
+        ],
+        [
+            Paragraph("<b>Ville</b>", styles["body"]),
+            Paragraph(customer.city or "—", styles["body"]),
+            Paragraph("<b>ID client</b>", styles["body"]),
+            Paragraph(str(customer.id), styles["body"])
+        ],
     ]
-    person_t = Table(person_data, colWidths=[3.5 * cm, 6 * cm, 3.5 * cm, 4.5 * cm])
+    person_t = Table(person_data, colWidths=[3.5 * cm, 5.0 * cm, 3.5 * cm, 5.0 * cm])
     person_t.setStyle(TableStyle([
-        ("FONTNAME",  (0, 0), (-1, -1), "Helvetica"),
-        ("FONTNAME",  (0, 0), (0, -1), "Helvetica-Bold"),
-        ("FONTNAME",  (2, 0), (2, -1), "Helvetica-Bold"),
-        ("TEXTCOLOR", (0, 0), (0, -1), C_NAVY),
-        ("TEXTCOLOR", (2, 0), (2, -1), C_NAVY),
-        ("FONTSIZE",  (0, 0), (-1, -1), 8),
         ("GRID",      (0, 0), (-1, -1), 0.5, C_MGRAY),
         ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#EBF5FB")),
         ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#EBF5FB")),
@@ -1059,22 +1135,29 @@ def generate_sar_pdf(
     # FIX: champs corrects du modèle Alert :
     # type_alerte / statut / sar_declare / date_creation / decision
     alert_data = [
-        ["Type d'alerte",  alert.type_alerte or "—",
-         "Statut",         alert.statut or "—"],
-        ["Date détection", _fmt_datetime(alert.date_creation),
-         "SAR déclaré",    "Oui" if alert.sar_declare else "Non"],
-        ["Décision/Motif", Paragraph(alert.decision or "—",
-                                     styles["body"]), "", ""],
+        [
+            Paragraph("<b>Type d'alerte</b>", styles["body"]),
+            Paragraph(alert.type_alerte or "—", styles["body"]),
+            Paragraph("<b>Statut</b>", styles["body"]),
+            Paragraph(alert.statut or "—", styles["body"])
+        ],
+        [
+            Paragraph("<b>Date détection</b>", styles["body"]),
+            Paragraph(_fmt_datetime(alert.date_creation), styles["body"]),
+            Paragraph("<b>SAR déclaré</b>", styles["body"]),
+            Paragraph("Oui" if alert.sar_declare else "Non", styles["body"])
+        ],
+        [
+            Paragraph("<b>Décision/Motif</b>", styles["body"]),
+            Paragraph(alert.decision or "—", styles["body"]),
+            "", ""
+        ],
     ]
-    alert_t = Table(alert_data, colWidths=[3.5 * cm, 5.5 * cm, 3 * cm, 5 * cm])
+    alert_t = Table(alert_data, colWidths=[3.5 * cm, 5.0 * cm, 3.5 * cm, 5.0 * cm])
     alert_t.setStyle(TableStyle([
-        ("FONTNAME",    (0, 0), (-1, -1), "Helvetica"),
-        ("FONTNAME",    (0, 0), (0, -1), "Helvetica-Bold"),
-        ("FONTNAME",    (2, 0), (2, -1), "Helvetica-Bold"),
-        ("TEXTCOLOR",   (0, 0), (0, -1), C_NAVY),
-        ("TEXTCOLOR",   (2, 0), (2, -1), C_NAVY),
-        ("FONTSIZE",    (0, 0), (-1, -1), 8),
         ("GRID",        (0, 0), (-1, -1), 0.5, C_MGRAY),
+        ("BACKGROUND",  (0, 0), (0, -1), colors.HexColor("#EBF5FB")),
+        ("BACKGROUND",  (2, 0), (2, -1), colors.HexColor("#EBF5FB")),
         ("SPAN",        (1, 2), (3, 2)),
         ("TOPPADDING",  (0, 0), (-1, -1), 5),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
@@ -1100,12 +1183,12 @@ def generate_sar_pdf(
             dest = all_countries.get(tx.destination_pays_id)
             orig = all_countries.get(tx.origine_pays_id)
             tx_rows.append([
-                date_str,
-                _fmt_montant(tx.montant),
-                tx.type_op or "—",
-                tx.canal or "—",
-                orig.name if orig else "—",
-                dest.name if dest else "—",
+                Paragraph(date_str, styles["body"]),
+                Paragraph(_fmt_montant(tx.montant), styles["body"]),
+                Paragraph(tx.type_op or "—", styles["body"]),
+                Paragraph(tx.canal or "—", styles["body"]),
+                Paragraph(orig.name if orig else "—", styles["body"]),
+                Paragraph(dest.name if dest else "—", styles["body"]),
             ])
 
         elements.append(_standard_table(
@@ -1172,7 +1255,7 @@ def generate_sar_pdf(
                     [Paragraph("Cachet de l'établissement :", styles["body_bold"])],
                     [Spacer(1, 30)],
                     [Paragraph("[Microfinance Béninoise SA]", ParagraphStyle(
-                        "cachet", fontName="Helvetica-Oblique", fontSize=8,
+                        "cachet", fontName="Helvetica-Oblique", fontSize=8, leading=10,
                         textColor=C_MGRAY))],
                 ],
                 colWidths=[10 * cm],

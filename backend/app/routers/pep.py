@@ -15,15 +15,15 @@ def list_pep(
     skip: int = Query(0, ge=0),
     limit: int = Query(25, ge=1, le=100),
     search: Optional[str] = None,
-    active_only: bool = True,
+    active: Optional[bool] = None,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
-    """Liste des PEP — filtrables par nom et statut actif."""
+    """Liste des PEP — filtrables par nom et statut (actif/inactif)."""
     query = db.query(PepEntry)
 
-    if active_only:
-        query = query.filter(PepEntry.active == True)
+    if active is not None:
+        query = query.filter(PepEntry.active == active)
     if search:
         query = query.filter(
             PepEntry.nom.ilike(f"%{search}%") |

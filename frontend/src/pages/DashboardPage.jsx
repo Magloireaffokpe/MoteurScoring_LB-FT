@@ -8,6 +8,7 @@ import {
   RefreshCw,
   Plus,
   ArrowRight,
+  Shield,
 } from "lucide-react";
 import {
   PieChart,
@@ -16,6 +17,11 @@ import {
   ResponsiveContainer,
   Tooltip,
   Legend,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
 } from "recharts";
 
 import { Layout } from "../components/Layout";
@@ -27,6 +33,7 @@ import { Table } from "../components/Table";
 
 import { dashboardService } from "../services/dashboardService";
 import { scoringService } from "../services/scoringService";
+import { customerService } from "../services/customerService";
 import { useFetch } from "../hooks/useFetch";
 
 import {
@@ -47,13 +54,20 @@ const PIE_COLORS = {
   ELEVE: "#EF4444",
 };
 
+const KYC_COLORS = {
+  HIGH: "#10B981",
+  MEDIUM: "#F59E0B",
+  LOW: "#EF4444",
+};
+
 /* ── Tooltip personnalisé ─────────────────────────────────────────── */
 function CustomTooltip({ active, payload }) {
   if (!active || !payload?.length) return null;
-  const { name, value } = payload[0];
+  const item = payload[0];
+  const displayName = item.payload?.name || item.name;
   return (
     <div className="bg-white border border-[#E5E7EB] rounded-xl px-3 py-2 shadow-lg text-xs font-medium">
-      {name} : <span className="font-bold">{value}</span>
+      {displayName} : <span className="font-bold">{item.value}</span>
     </div>
   );
 }
@@ -144,7 +158,6 @@ const ALERT_COLS = (navigate) => [
 /* ── Page principale ─────────────────────────────────────────────── */
 export default function DashboardPage() {
   const navigate = useNavigate();
-  const [rescoreId, setRescoreId] = useState("");
   const [rescoring, setRescoring] = useState(false);
 
   /* Chargement stats */
@@ -156,6 +169,13 @@ export default function DashboardPage() {
     () => dashboardService.stats().catch(() => MOCK_DASHBOARD_STATS),
     [],
   );
+
+  /* Chargement clients PEP */
+  const { data: pepData } = useFetch(
+    () => dashboardService.pepClients().catch(() => ({ items: [], total: 0 })),
+    [],
+  );
+  const pepCount = pepData?.total ?? 0;
 
   /* Chargement alertes récentes */
   const { data: alertsData, loading: loadingAlerts } = useFetch(
@@ -174,23 +194,29 @@ export default function DashboardPage() {
       )
     : [];
 
-  /* Rescore rapide */
-  const handleRescore = async (e) => {
-    e.preventDefault();
-    if (!rescoreId.trim()) {
-      toast.error("Entrez un UUID client valide");
-      return;
-    }
+  /* KYC levels data */
+  const kycData = stats
+    ? Object.entries(stats.clients_by_kyc_level || {}).map(
+        ([name, value]) => ({
+          name,
+          value,
+        }),
+      )
+    : [];
+
+  /* Rescore global */
+  const handleGlobalRescore = async () => {
+    const toastId = toast.loading("Rescoring global en cours...");
     setRescoring(true);
     try {
-      const r = await scoringService.rescore(rescoreId.trim());
+      const result = await scoringService.rescoreAll();
       toast.success(
-        `Score : ${r.global_score}/100 — ${normalizeCategory(r.risk_category)}`,
+        `Rescoring global terminé : ${result.rescored} clients recalculés, dont ${result.critical} ont atteint le seuil critique.`,
+        { id: toastId, duration: 6000 }
       );
-      setRescoreId("");
       refetch();
-    } catch {
-      toast.error("Rescore échoué. Vérifiez l'UUID.");
+    } catch (err) {
+      toast.error("Échec du rescoring global", { id: toastId });
     } finally {
       setRescoring(false);
     }
@@ -207,7 +233,7 @@ export default function DashboardPage() {
     <Layout pageTitle="Dashboard">
       <div className="space-y-6">
         {/* ── KPI ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
           <KpiCard
             label="Total clients"
             value={stats?.total_clients?.toLocaleString("fr-FR")}
@@ -240,9 +266,16 @@ export default function DashboardPage() {
             color="secondary"
             sub={formatAmount(stats?.transactions_last_30d?.total_amount)}
           />
+          <KpiCard
+            label="Clients PEP actifs"
+            value={pepCount}
+            icon={Shield}
+            color="primary"
+            sub="Sous surveillance renforcée"
+          />
         </div>
 
-        {/* ── Row 2 : Pie + actions ── */}
+        {/* ── Row 2 : Pie + Bar + actions ── */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {/* Pie chart */}
           <Card title="Répartition du risque" className="lg:col-span-1">
@@ -279,8 +312,43 @@ export default function DashboardPage() {
             )}
           </Card>
 
+          {/* Bar chart KYC */}
+          <Card title="Répartition du niveau KYC" className="lg:col-span-1">
+            {kycData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={210}>
+                <BarChart data={kycData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F3F4F6" />
+                  <XAxis
+                    dataKey="name"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fill: "#6B7280", fontSize: 11 }}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fill: "#6B7280", fontSize: 11 }}
+                  />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                    {kycData.map((entry, index) => (
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={KYC_COLORS[entry.name] || "#9CA3AF"}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-40 text-[#9CA3AF] text-sm">
+                Aucune donnée
+              </div>
+            )}
+          </Card>
+
           {/* Actions rapides + Rescore */}
-          <div className="lg:col-span-2 space-y-4">
+          <div className="lg:col-span-1 space-y-4">
             <Card title="Actions rapides">
               <div className="flex flex-col sm:flex-row gap-3">
                 <Button
@@ -300,30 +368,20 @@ export default function DashboardPage() {
             </Card>
 
             <Card title="Rescore rapide">
-              <form
-                onSubmit={handleRescore}
-                className="flex flex-col sm:flex-row gap-2"
-              >
-                <input
-                  className="flex-1 min-w-0 px-3 py-2.5 rounded-xl border border-[#E5E7EB] text-sm
-                             focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]/30 focus:border-[#1E3A8A]"
-                  placeholder="UUID du client à rescorer…"
-                  value={rescoreId}
-                  onChange={(e) => setRescoreId(e.target.value)}
-                />
+              <div className="flex flex-col gap-3">
                 <Button
-                  type="submit"
+                  onClick={handleGlobalRescore}
                   variant="secondary"
                   loading={rescoring}
-                  className="w-full sm:w-auto flex-shrink-0 justify-center"
+                  className="w-full justify-center"
                 >
-                  <RefreshCw className="w-4 h-4" /> Scorer
+                  <RefreshCw className="w-4 h-4" /> Lancer le rescoring global
                 </Button>
-              </form>
-              <p className="text-xs text-[#9CA3AF] mt-2">
-                Entrez l&apos;UUID du client pour lancer un recalcul immédiat du
-                score LBC/FT.
-              </p>
+                <p className="text-xs text-[#9CA3AF] leading-relaxed">
+                  Calcule à nouveau les scores LBC/FT pour tous les clients du portefeuille.
+                  Cette opération synchronise la détection des risques.
+                </p>
+              </div>
             </Card>
           </div>
         </div>

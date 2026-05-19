@@ -10,6 +10,7 @@ const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const ClientsListPage = lazy(() => import("./pages/ClientsListPage"));
 const ClientDetailPage = lazy(() => import("./pages/ClientDetailPage"));
 const AddClientPage = lazy(() => import("./pages/AddClientPage"));
+const EditClientPage = lazy(() => import("./pages/EditClientPage"));
 const AlertsPage = lazy(() => import("./pages/AlertsPage"));
 const ExportsPage = lazy(() => import("./pages/ExportsPage"));
 const ScorePage = lazy(() => import("./pages/ScorePage"));
@@ -70,6 +71,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <ClientDetailPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/clients/:id/edit"
+          element={
+            <ProtectedRoute adminOnly>
+              <EditClientPage />
             </ProtectedRoute>
           }
         />

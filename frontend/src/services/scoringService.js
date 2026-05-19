@@ -22,4 +22,9 @@ export const scoringService = {
    * GET /api/scores/{score_id}
    */
   getById: (score_id) => api.get(`/api/scores/${score_id}`).then((r) => r.data),
+
+  /**
+   * POST /api/scoring/rescore-all
+   */
+  rescoreAll: () => api.post("/api/scoring/rescore-all").then((r) => r.data),
 };

@@ -1,6 +1,6 @@
 // src/pages/AlertsPage.jsx
-import { useState, useCallback } from "react";
-import { AlertTriangle, RefreshCw } from "lucide-react";
+import { useState, useCallback, useEffect } from "react";
+import { AlertTriangle, RefreshCw, Plus } from "lucide-react";
 
 import { Layout } from "../components/Layout";
 import { Card } from "../components/Card";
@@ -11,6 +11,7 @@ import { Table, Pagination } from "../components/Table";
 import { FormInput, FormSelect, FormTextarea } from "../components/FormInput";
 
 import { alertService } from "../services/alertService";
+import { customerService } from "../services/customerService";
 import { exportService } from "../services/exportService";
 import { useFetch } from "../hooks/useFetch";
 import { usePagination } from "../hooks/usePagination";
@@ -25,12 +26,21 @@ const STATUS_OPTS = [
   { v: "UNDER_REVIEW", l: "En cours" },
   { v: "CLOSED", l: "Fermé" },
 ];
+
+const TYPE_OPTS = [
+  { v: "", l: "Tous types" },
+  { v: "SCORE_ELEVE", l: "Score élevé" },
+  { v: "KYC_INCOMPLET", l: "KYC incomplet" },
+  { v: "PEP_DETECTE", l: "PEP détecté" },
+];
+
 const RISK_OPTS = [
   { v: "", l: "Tous niveaux" },
   { v: "HIGH", l: "Élevé" },
   { v: "MEDIUM", l: "Moyen" },
   { v: "LOW", l: "Faible" },
 ];
+
 const ACTION_OPTS = [
   { v: "", l: "— Choisir une action —" },
   { v: "CONDITIONAL_APPROVAL", l: "Approbation conditionnelle" },
@@ -43,6 +53,7 @@ const ACTION_OPTS = [
 export default function AlertsPage() {
   const { page, pageSize, setPage, reset, paginationProps } = usePagination(25);
   const [statusFilter, setStatusFilter] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
   const [riskFilter, setRiskFilter] = useState("");
 
   const [editModal, setEditModal] = useState(false);
@@ -54,14 +65,35 @@ export default function AlertsPage() {
   });
   const [saving, setSaving] = useState(false);
 
+  // States pour la création manuelle d'alerte
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [clients, setClients] = useState([]);
+  const [creating, setCreating] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    client_id: "",
+    type_alerte: "KYC_INCOMPLET",
+    decision: "",
+  });
+
+  // Charger la liste des clients pour la sélection
+  useEffect(() => {
+    customerService
+      .list({ limit: 1000 })
+      .then((res) => {
+        setClients(res.items || res || []);
+      })
+      .catch(() => {});
+  }, []);
+
   const { data, loading, refetch } = useFetch(
     () =>
       alertService.list({
         skip: (page - 1) * pageSize,
         limit: pageSize,
         ...(statusFilter && { statut: statusFilter }),
+        ...(typeFilter && { type_alerte: typeFilter }),
       }),
-    [page, statusFilter, riskFilter],
+    [page, statusFilter, typeFilter, riskFilter],
   );
 
   const alerts = data?.items || [];
@@ -92,6 +124,40 @@ export default function AlertsPage() {
     }
   };
 
+  const handleCreateAlert = async (e) => {
+    e.preventDefault();
+    if (!createForm.client_id) {
+      toast.error("Veuillez sélectionner un client");
+      return;
+    }
+
+    setCreating(true);
+    const toastId = toast.loading("Création de l'alerte...");
+    try {
+      const payload = {
+        client_id: createForm.client_id,
+        type_alerte: createForm.type_alerte,
+        statut: "OPEN",
+        decision: createForm.decision || null,
+        sar_declare: false,
+      };
+
+      await alertService.create(payload);
+      toast.success("Alerte créée avec succès !", { id: toastId });
+      setShowCreateModal(false);
+      setCreateForm({
+        client_id: "",
+        type_alerte: "KYC_INCOMPLET",
+        decision: "",
+      });
+      refetch();
+    } catch (err) {
+      toast.error("Échec de la création de l'alerte", { id: toastId });
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const handleSar = async (alertId) => {
     try {
       await exportService.sarPdf(alertId);
@@ -105,11 +171,15 @@ export default function AlertsPage() {
     {
       key: "customer_name",
       label: "Client",
-      render: (v, r) => (
-        <span className="text-sm font-semibold text-[#111827] font-sans">
-          {v || r.client_id?.slice(0, 12) + "…"}
-        </span>
-      ),
+      render: (v, r) => {
+        const client = clients.find((c) => c.id === r.client_id);
+        const name = client ? `${client.prenom} ${client.nom}` : null;
+        return (
+          <span className="text-sm font-semibold text-[#111827] font-sans">
+            {name || r.client_id?.slice(0, 12) + "…"}
+          </span>
+        );
+      },
     },
     {
       key: "type_alerte",
@@ -251,6 +321,26 @@ export default function AlertsPage() {
             </div>
             <div className="flex-1 min-w-[140px]">
               <label className="text-sm font-medium text-[#374151] font-sans block mb-1.5">
+                Type d'alerte
+              </label>
+              <select
+                className="w-full px-3 py-2.5 rounded-xl border border-[#E5E7EB] text-sm bg-white
+                           focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]/30"
+                value={typeFilter}
+                onChange={(e) => {
+                  setTypeFilter(e.target.value);
+                  reset();
+                }}
+              >
+                {TYPE_OPTS.map((o) => (
+                  <option key={o.v} value={o.v}>
+                    {o.l}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex-1 min-w-[140px]">
+              <label className="text-sm font-medium text-[#374151] font-sans block mb-1.5">
                 Niveau de risque
               </label>
               <select
@@ -274,6 +364,7 @@ export default function AlertsPage() {
               className="w-full sm:w-auto justify-center"
               onClick={() => {
                 setStatusFilter("");
+                setTypeFilter("");
                 setRiskFilter("");
                 reset();
               }}
@@ -289,6 +380,9 @@ export default function AlertsPage() {
             <p className="text-sm font-medium text-[#374151] font-sans">
               {total} alerte{total > 1 ? "s" : ""} au total
             </p>
+            <Button size="sm" onClick={() => setShowCreateModal(true)}>
+              <Plus className="w-4 h-4" /> Nouvelle alerte
+            </Button>
           </div>
           <Table
             columns={columns}
@@ -301,6 +395,69 @@ export default function AlertsPage() {
           </div>
         </Card>
       </div>
+
+      {/* Modal de création manuelle d'alerte */}
+      <Modal
+        open={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        title="Créer une alerte manuellement"
+      >
+        <form onSubmit={handleCreateAlert} className="space-y-4">
+          <FormSelect
+            label="Sélectionner le client"
+            required
+            value={createForm.client_id}
+            onChange={(e) =>
+              setCreateForm((f) => ({ ...f, client_id: e.target.value }))
+            }
+          >
+            <option value="">— Choisir un client —</option>
+            {clients.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nom} {c.prenom}
+              </option>
+            ))}
+          </FormSelect>
+
+          <FormSelect
+            label="Type d'alerte"
+            required
+            value={createForm.type_alerte}
+            onChange={(e) =>
+              setCreateForm((f) => ({ ...f, type_alerte: e.target.value }))
+            }
+          >
+            {TYPE_OPTS.filter((o) => o.v !== "").map((o) => (
+              <option key={o.v} value={o.v}>
+                {o.l}
+              </option>
+            ))}
+          </FormSelect>
+
+          <FormTextarea
+            label="Notes / Décision initiale"
+            value={createForm.decision}
+            onChange={(e) =>
+              setCreateForm((f) => ({ ...f, decision: e.target.value }))
+            }
+            placeholder="Décrivez le motif de l'alerte ou la décision initiale..."
+            rows={4}
+          />
+
+          <ModalFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setShowCreateModal(false)}
+            >
+              Annuler
+            </Button>
+            <Button type="submit" loading={creating}>
+              Créer l'alerte
+            </Button>
+          </ModalFooter>
+        </form>
+      </Modal>
 
       {/* Modal gestion */}
       <Modal

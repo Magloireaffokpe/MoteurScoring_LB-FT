@@ -48,6 +48,7 @@ vi.mock("../../src/services/scoringService", () => ({
     score: vi.fn(),
     rescore: vi.fn(),
     getById: vi.fn(),
+    rescoreAll: vi.fn(),
   },
 }));
 
@@ -64,6 +65,12 @@ vi.mock("../../src/services/exportService", () => ({
     customerPdf: vi.fn(),
     transactionsCsv: vi.fn(),
     sarPdf: vi.fn(),
+  },
+}));
+
+vi.mock("../../src/services/pepService", () => ({
+  pepService: {
+    list: vi.fn(),
   },
 }));
 
@@ -358,6 +365,18 @@ describe("DashboardPage", () => {
     });
   });
 
+  it("déclenche le rescoring global au clic sur le bouton", async () => {
+    scoringService.rescoreAll.mockResolvedValue({ rescored: 5, critical: 1 });
+    renderWithProviders(<DashboardPage />, { session: ADMIN_SESSION });
+    
+    const rescoreBtn = await screen.findByText("Lancer le rescoring global");
+    fireEvent.click(rescoreBtn);
+
+    await waitFor(() => {
+      expect(scoringService.rescoreAll).toHaveBeenCalled();
+    });
+  });
+
   it("affiche les 5 dernières alertes", async () => {
     renderWithProviders(<DashboardPage />, { session: ADMIN_SESSION });
     await waitFor(() => {
@@ -373,6 +392,7 @@ describe("ClientsListPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     customerService.list.mockResolvedValue(MOCK_CLIENTS);
+    referentialService.riskZones.mockResolvedValue(MOCK_RISK_ZONES);
   });
 
   async function renderClientsListPage() {
@@ -523,6 +543,7 @@ describe("AdminPage", () => {
     adminService.getCriteria.mockResolvedValue({ items: MOCK_CRITERIA });
     adminService.getThresholds.mockResolvedValue({ items: MOCK_THRESHOLDS });
     adminService.getAuditLogs.mockResolvedValue({ items: [], total: 0 });
+    adminService.getUsers.mockResolvedValue({ items: [] });
     referentialService.countries.mockResolvedValue(MOCK_COUNTRIES);
     referentialService.riskZones.mockResolvedValue(MOCK_RISK_ZONES);
   });

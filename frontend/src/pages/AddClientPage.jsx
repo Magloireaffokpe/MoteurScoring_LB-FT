@@ -317,49 +317,7 @@ function Step2({ data, errors, patch, countries, zones }) {
         helper="Customer.region — String(100) nullable"
       />
 
-      {/* Statut PEP — Customer.statut_pep Boolean */}
-      <div className="sm:col-span-2">
-        <p className="text-sm font-medium text-[#6B7280] mb-2">
-          Statut PEP (Personne Exposée Politiquement)
-          <span className="text-[#9CA3AF] text-xs ml-2 font-normal">
-            Customer.statut_pep — Boolean default false
-          </span>
-        </p>
-        <div className="flex gap-3">
-          {[
-            {
-              val: false,
-              label: "Non PEP — Standard",
-              color: "border-[#10B981] bg-[#ECFDF5] text-[#059669]",
-            },
-            {
-              val: true,
-              label: "PEP — Vigilance renforcée",
-              color: "border-[#EF4444] bg-[#FEF2F2] text-[#DC2626]",
-            },
-          ].map(({ val, label, color }) => (
-            <button
-              key={String(val)}
-              type="button"
-              onClick={() => patch({ statut_pep: val })}
-              className={clsx(
-                "flex-1 py-2.5 px-3 rounded-xl border-2 text-sm font-semibold transition-all duration-200",
-                data.statut_pep === val
-                  ? color
-                  : "border-[#E5E7EB] text-[#9CA3AF] hover:border-[#D1D5DB]",
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        {data.statut_pep && (
-          <p className="text-xs text-[#EF4444] mt-2 px-1">
-            ⚠ Ce client sera automatiquement ajouté à la surveillance renforcée
-            et son score C5 sera maximal (100 pts × poids).
-          </p>
-        )}
-      </div>
+
 
       {/* Documents KYC — CustomerDoc */}
       <div className="sm:col-span-2 pt-2">
@@ -452,11 +410,7 @@ function Recap({ data, countries, zones, onEdit }) {
         },
         { label: "Ville", value: data.city || "—" },
         { label: "Région", value: data.region || "—" },
-        {
-          label: "Statut PEP",
-          value: data.statut_pep ? "⚠ OUI — Vigilance renforcée" : "Non",
-          danger: data.statut_pep,
-        },
+
         { label: "Type doc.", value: data.type_doc || "—" },
         { label: "N° document", value: data.numero || "—" },
         { label: "Expiration", value: data.date_expiration || "—" },

@@ -42,6 +42,7 @@ from app.schemas.score import (
     ScoreResponse,
     ScoreSummary,
     ScoringRequest,
+    RescoreAllResponse,
 )
 from app.services import alert_service, audit_service
 from app.services.scoring import ScoringEngine
@@ -441,3 +442,69 @@ async def get_customer_scores(
     ]
 
     return ScoreListResponse(items=items, total=total)
+
+
+@router.post(
+    "/scoring/rescore-all",
+    response_model=RescoreAllResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Recalcul global de tous les scores LBC/FT",
+    description="Recalcule le score LBC/FT de tous les clients du portefeuille.",
+)
+async def rescore_all_customers(
+    http_request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> RescoreAllResponse:
+    customers = db.query(Customer).all()
+    rescored_count = 0
+    critical_count = 0
+
+    for customer in customers:
+        try:
+            with db.begin_nested():
+                # Calcul du score via ScoringEngine
+                engine = ScoringEngine(db)
+                result = engine.calculate_score(customer.id)
+                
+                # Archiver l'ancien score
+                _mark_previous_scores_as_not_current(db, customer.id)
+                
+                # Enregistrer le nouveau score
+                new_score = Score(
+                    client_id=customer.id,
+                    score_global=result["global_score"],
+                    detail_json=result["detail_json"],
+                    categorie=result["risk_category"],
+                    is_current=True,
+                    calcule_par="AUTOMATED",
+                )
+                db.add(new_score)
+                db.flush()
+                
+                # Créer l'alerte de score élevé si nécessaire
+                alert_service.create_score_alert_if_needed(
+                    db=db,
+                    customer_id=customer.id,
+                    global_score=result["global_score"],
+                    skip_if_open=True,
+                )
+                
+                rescored_count += 1
+                if result["global_score"] >= 67:
+                    critical_count += 1
+        except Exception as exc:
+            logger.error("Erreur lors du rescore global pour le client %s : %s", customer.id, exc)
+            continue
+
+    # Enregistrer dans l'audit log
+    audit_service.log_action(
+        db=db,
+        user_id=str(current_user.id),
+        action=audit_service.ACTION_SCORING_RESCORE_ALL,
+        ip_address=_get_client_ip(http_request),
+    )
+    
+    db.commit()
+    
+    return RescoreAllResponse(rescored=rescored_count, critical=critical_count)

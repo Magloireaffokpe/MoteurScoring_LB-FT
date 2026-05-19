@@ -19,3 +19,15 @@ class TransactionResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class TransactionCreate(BaseModel):
+    compte_id: UUID
+    montant: float
+    devise: str = "XOF"
+    type_op: str          # 'DEPOT', 'RETRAIT', 'VIREMENT', 'PAIEMENT'
+    canal: str = "GUICHET"
+    origine: str = None
+    destination: str = None
+    origine_pays_id: int = None
+    destination_pays_id: int = None

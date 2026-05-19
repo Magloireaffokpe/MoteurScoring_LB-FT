@@ -260,3 +260,57 @@ class TestAdminEndpoints:
         response = client.get("/api/admin/users", headers=admin_headers)
         assert response.status_code == 200
         assert "items" in response.json()
+
+
+class TestTransactionsEndpoints:
+    """Tests d'intégration des endpoints de transaction."""
+
+    def test_create_transaction_success(self, client, admin_headers, db, reference_data):
+        from app.models.customer_accounts import CustomerAccount
+        customer = Customer(nom="TRANS", prenom="Test")
+        db.add(customer)
+        db.flush()
+
+        account = CustomerAccount(
+            client_id=customer.id,
+            type_compte="courant",
+            solde_moyen=1000.0,
+            status="ACTIF"
+        )
+        db.add(account)
+        db.commit()
+
+        response = client.post(
+            f"/api/customers/{customer.id}/transactions",
+            headers=admin_headers,
+            json={
+                "compte_id": str(account.id),
+                "montant": 500.0,
+                "type_op": "DEPOT",
+                "canal": "GUICHET",
+                "origine": "CENTIF",
+                "destination": "Client",
+                "devise": "XOF"
+            }
+        )
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert data["montant"] == 500.0
+        assert data["type_op"] == "DEPOT"
+
+    def test_create_transaction_wrong_account(self, client, admin_headers, db, reference_data):
+        import uuid
+        customer = Customer(nom="TRANS_WRONG", prenom="Test")
+        db.add(customer)
+        db.commit()
+
+        response = client.post(
+            f"/api/customers/{customer.id}/transactions",
+            headers=admin_headers,
+            json={
+                "compte_id": str(uuid.uuid4()),
+                "montant": 500.0,
+                "type_op": "DEPOT"
+            }
+        )
+        assert response.status_code == 404

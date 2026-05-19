@@ -800,3 +800,27 @@ class TestHistoriqueScores:
         assert r_full.status_code == 200
         assert r_limited.status_code == 200
         assert len(r_limited.json()["items"]) <= 1
+
+
+class TestRescoreAll:
+
+    def test_rescore_all_retourne_200(
+        self,
+        test_client: TestClient,
+        auth_headers: dict,
+        db_session: Session,
+    ):
+        """POST /api/scoring/rescore-all recalcule tous les clients."""
+        # Création de clients tests
+        c1 = _create_low_risk_customer(db_session)
+        c2 = _create_high_risk_customer(db_session)
+
+        response = test_client.post(
+            "/api/scoring/rescore-all",
+            headers=auth_headers,
+        )
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert "rescored" in data
+        assert "critical" in data
+        assert data["rescored"] >= 2

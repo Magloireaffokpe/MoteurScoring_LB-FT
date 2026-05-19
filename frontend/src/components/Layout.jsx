@@ -1,4 +1,5 @@
 // src/components/Layout.jsx
+import { useState, useEffect, useRef, useCallback } from "react";
 import { NavLink, useNavigate, Link } from "react-router-dom";
 import { clsx } from "clsx";
 import {
@@ -15,7 +16,8 @@ import {
 } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 import { useAppContext } from "../context/AppContext";
-import { getInitials } from "../utils/formatters";
+import { getInitials, formatDatetime } from "../utils/formatters";
+import { alertService } from "../services/alertService";
 
 const NAV_ITEMS = [
   {
@@ -137,6 +139,122 @@ function SidebarContent({ onLinkClick }) {
   );
 }
 
+/* ─────────────────────────────────────────────────────────────────────
+   Composant Cloche de Notifications
+───────────────────────────────────────────────────────────────────── */
+function NotificationBell() {
+  const [alerts, setAlerts] = useState([]);
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+  const navigate = useNavigate();
+
+  const fetchHighRiskAlerts = useCallback(() => {
+    if (!alertService || typeof alertService.list !== "function") {
+      return;
+    }
+    const promise = alertService.list({ limit: 50, statut: "OPEN" });
+    if (!promise || typeof promise.then !== "function") {
+      return;
+    }
+    promise
+      .then((d) => {
+        const items = d?.items || d || [];
+        const highRisk = items.filter(
+          (a) => a.type_alerte === "SCORE_ELEVE" || a.type_alerte === "PEP_DETECTE",
+        );
+        setAlerts(highRisk);
+      })
+      .catch((err) => {
+        console.error("Erreur de récupération des alertes pour la cloche", err);
+      });
+  }, []);
+
+  useEffect(() => {
+    fetchHighRiskAlerts();
+    const interval = setInterval(fetchHighRiskAlerts, 15000);
+    return () => clearInterval(interval);
+  }, [fetchHighRiskAlerts]);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleAlertClick = (alert) => {
+    setIsOpen(false);
+    navigate(`/clients/${alert.client_id}`);
+  };
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="relative p-1.5 rounded-lg text-[#6B7280] hover:text-[#1E3A8A] hover:bg-[#F3F4F6] transition-colors focus:outline-none"
+        aria-label="Notifications"
+      >
+        <Bell className="w-5 h-5" />
+        {alerts.length > 0 && (
+          <span className="absolute top-0 right-0 transform translate-x-1/3 -translate-y-1/3 flex h-5 w-5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-5 w-5 bg-[#EF4444] text-[10px] font-bold text-white items-center justify-center">
+              {alerts.length}
+            </span>
+          </span>
+        )}
+      </button>
+
+      {isOpen && (
+        <div className="absolute right-0 mt-2.5 w-80 bg-white rounded-xl border border-[#E5E7EB] shadow-xl z-50 overflow-hidden py-1">
+          <div className="px-4 py-2.5 bg-[#F9FAFB] border-b border-[#E5E7EB] flex items-center justify-between">
+            <span className="text-xs font-bold text-[#1E3A8A] font-sans">
+              ALERTES RISQUE CRITIQUE
+            </span>
+            <span className="bg-[#FEF2F2] text-[#EF4444] text-[10px] font-bold px-2 py-0.5 rounded-full">
+              {alerts.length} en cours
+            </span>
+          </div>
+
+          <div className="max-h-64 overflow-y-auto divide-y divide-[#F3F4F6]">
+            {alerts.length > 0 ? (
+              alerts.map((a) => (
+                <button
+                  key={a.id}
+                  onClick={() => handleAlertClick(a)}
+                  className="w-full text-left px-4 py-3 hover:bg-[#F9FAFB] transition-all flex flex-col gap-1 focus:outline-none"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-xs font-bold text-[#111827] font-sans truncate">
+                      {a.customer_name || `Client ${a.client_id?.slice(0, 8)}...`}
+                    </span>
+                    <span className="bg-[#FEF2F2] text-[#EF4444] text-[9px] font-bold px-1.5 py-0.5 rounded">
+                      ÉLEVÉ
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[#6B7280] font-sans leading-relaxed">
+                    {a.description || "Un score de risque élevé a été calculé pour ce client."}
+                  </p>
+                  <span className="text-[10px] text-[#9CA3AF] font-sans">
+                    {formatDatetime(a.date_creation)}
+                  </span>
+                </button>
+              ))
+            ) : (
+              <div className="py-8 px-4 text-center text-[#9CA3AF] text-xs font-sans">
+                Aucune alerte de risque critique en cours.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Layout principal ─────────────────────────────────────────────── */
 /**
  * @param {string}    pageTitle - Titre affiché dans le header
@@ -211,6 +329,7 @@ export function Layout({ pageTitle, children }) {
                 <Shield className="w-3 h-3" /> Admin
               </span>
             )}
+            <NotificationBell />
             <div
               className="w-8 h-8 rounded-full bg-[#1E3A8A] flex items-center justify-center
                             text-white text-xs font-bold flex-shrink-0"

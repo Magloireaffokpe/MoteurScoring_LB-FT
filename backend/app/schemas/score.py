@@ -264,3 +264,17 @@ class ScoreListResponse(BaseModel):
         ..., ge=0,
         description="Nombre total de scores pour ce client (toutes pages)",
     )
+
+
+class RescoreAllResponse(BaseModel):
+    """
+    Réponse renvoyée après un recalcul global de tous les scores de risque.
+    """
+    rescored: int = Field(
+        ..., ge=0,
+        description="Nombre de clients recalculés avec succès",
+    )
+    critical: int = Field(
+        ..., ge=0,
+        description="Nombre de clients ayant atteint le seuil critique (score >= 67)",
+    )

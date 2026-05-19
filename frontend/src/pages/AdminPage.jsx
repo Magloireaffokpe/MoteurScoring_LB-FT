@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Shield,
   AlertTriangle,
+  UserPlus,
 } from "lucide-react";
 
 import { Layout } from "../components/Layout";
@@ -21,6 +22,7 @@ import { FormInput, FormSelect, FormTextarea } from "../components/FormInput";
 
 import { adminService } from "../services/adminService";
 import { referentialService } from "../services/customerService";
+import { pepService } from "../services/pepService";
 import { usePagination } from "../hooks/usePagination";
 import { useFetch } from "../hooks/useFetch";
 
@@ -41,6 +43,7 @@ const TABS = [
   { id: "criteria", label: "Poids critères", icon: Settings },
   { id: "thresholds", label: "Seuils risque", icon: Shield },
   { id: "pep", label: "Gestion PEP", icon: Users },
+  { id: "agents", label: "Gestion agents", icon: UserPlus },
   { id: "audit", label: "Audit logs", icon: FileText },
 ];
 
@@ -344,6 +347,11 @@ function PepSection() {
   const [adding, setAdding] = useState(false);
   const [errors, setErrors] = useState({});
 
+  // Search & Listing states
+  const { page, pageSize, setPage, reset, paginationProps } = usePagination(25);
+  const [search, setSearch] = useState("");
+  const [activeFilter, setActiveFilter] = useState("true"); // Default to active PEPs only
+
   // Formulaire PEP manuel — champs synchronisés avec PepEntry (pep_list.py de Marcos)
   const [form, setForm] = useState({
     prenom: "",
@@ -361,6 +369,20 @@ function PepSection() {
       .then(setCountries)
       .catch(() => setCountries(MOCK_COUNTRIES));
   }, []);
+
+  const { data: pepListData, loading: loadingPepList, refetch: refetchPepList } = useFetch(
+    () =>
+      pepService.list({
+        skip: (page - 1) * pageSize,
+        limit: pageSize,
+        ...(search.trim() && { search: search.trim() }),
+        ...(activeFilter !== "" && { active: activeFilter === "true" }),
+      }),
+    [page, search, activeFilter],
+  );
+
+  const pepList = pepListData?.items || [];
+  const pepTotal = pepListData?.total || 0;
 
   const handleFileChange = (e) => {
     const f = e.target.files[0];
@@ -386,6 +408,7 @@ function PepSection() {
       setFile(null);
       setPreview([]);
       if (fileRef.current) fileRef.current.value = "";
+      refetchPepList();
     } catch {
       toast.error("Erreur import CSV PEP");
     } finally {
@@ -432,6 +455,7 @@ function PepSection() {
         date_fin: "",
       });
       setErrors({});
+      refetchPepList();
     } catch {
       // Fallback local si endpoint absent
       setPepAdded((l) => [{ id: Date.now(), ...form }, ...l]);
@@ -469,6 +493,47 @@ function PepSection() {
       ),
     },
     { key: "date_debut", label: "Depuis", render: (v) => formatDate(v) || "—" },
+  ];
+
+  const pepCols = [
+    { key: "prenom", label: "Prénom" },
+    {
+      key: "nom",
+      label: "Nom",
+      render: (v) => <span className="font-semibold">{v}</span>,
+    },
+    { key: "fonction", label: "Fonction" },
+    {
+      key: "pays",
+      label: "Pays",
+      render: (v) => {
+        const c = countries.find((country) => country.id === v);
+        return c ? `${c.name} (${c.code_iso})` : `—`;
+      },
+    },
+    {
+      key: "source",
+      label: "Source",
+      render: (v) => (
+        <span className="font-mono text-[11px] bg-[#EEF2FF] text-[#1E3A8A] px-2 py-0.5 rounded">
+          {v}
+        </span>
+      ),
+    },
+    {
+      key: "active",
+      label: "Statut",
+      render: (v) => (
+        <span
+          className={clsx(
+            "text-[11px] px-2 py-0.5 rounded font-semibold",
+            v ? "bg-[#E0F2FE] text-[#0369A1]" : "bg-[#F3F4F6] text-[#4B5563]"
+          )}
+        >
+          {v ? "Actif" : "Inactif"}
+        </span>
+      ),
+    },
   ];
 
   return (
@@ -611,6 +676,60 @@ function PepSection() {
           <Table columns={addedCols} data={pepAdded} emptyText="—" />
         </Card>
       )}
+
+      {/* Base de données des PEP */}
+      <Card title={`Base de données des PEP (${pepTotal})`} noPad>
+        <div className="p-4 border-b border-[#E5E7EB] flex flex-col sm:flex-row gap-3 items-center justify-between">
+          <div className="w-full sm:w-72">
+            <input
+              type="text"
+              placeholder="Rechercher par nom, prénom..."
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                reset();
+              }}
+              className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] bg-white text-sm text-[#111827] placeholder-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]/30 focus:border-[#1E3A8A] transition-all duration-200 font-sans"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <label htmlFor="activeFilter" className="text-xs font-medium text-[#374151] select-none font-sans">
+              Statut :
+            </label>
+            <select
+              id="activeFilter"
+              value={activeFilter}
+              onChange={(e) => {
+                setActiveFilter(e.target.value);
+                reset();
+              }}
+              className="px-3 py-1.5 rounded-xl border border-[#E5E7EB] bg-white text-xs text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]/30 focus:border-[#1E3A8A] transition-all duration-200 font-sans"
+            >
+              <option value="">Tous</option>
+              <option value="true">Actifs</option>
+              <option value="false">Inactifs</option>
+            </select>
+          </div>
+        </div>
+
+        <Table
+          columns={pepCols}
+          data={pepList}
+          loading={loadingPepList}
+          emptyText="Aucune personne politiquement exposée trouvée."
+        />
+
+        {pepTotal > pageSize && (
+          <div className="p-4 border-t border-[#E5E7EB]">
+            <Pagination
+              page={page}
+              total={pepTotal}
+              pageSize={pageSize}
+              onPageChange={setPage}
+            />
+          </div>
+        )}
+      </Card>
     </div>
   );
 }
@@ -621,6 +740,16 @@ function PepSection() {
 function AuditSection() {
   const { page, pageSize, setPage, reset, paginationProps } = usePagination(50);
   const [actionFilter, setActionFilter] = useState("");
+  const [userFilter, setUserFilter] = useState("");
+  const [users, setUsers] = useState([]);
+
+  // Charger la liste des utilisateurs pour faire correspondre les identifiants
+  useEffect(() => {
+    adminService
+      .getUsers()
+      .then((res) => setUsers(res.items || []))
+      .catch(() => {});
+  }, []);
 
   const { data, loading, refetch } = useFetch(
     () =>
@@ -628,8 +757,9 @@ function AuditSection() {
         skip: (page - 1) * pageSize,
         limit: pageSize,
         ...(actionFilter && { action: actionFilter }),
+        ...(userFilter && { user_id: userFilter }),
       }),
-    [page, actionFilter],
+    [page, actionFilter, userFilter],
   );
 
   const logs = data?.items || [];
@@ -650,9 +780,14 @@ function AuditSection() {
     {
       key: "user_id",
       label: "Utilisateur",
-      render: (v) => (
-        <span className="font-mono text-[11px]">{v?.slice(0, 8)}…</span>
-      ),
+      render: (v) => {
+        const u = users.find((usr) => String(usr.id) === String(v));
+        return (
+          <span className="font-mono text-[11px] font-semibold text-[#1E3A8A]">
+            {u ? u.login : v?.slice(0, 8) + "…"}
+          </span>
+        );
+      },
     },
     {
       key: "action",
@@ -707,10 +842,34 @@ function AuditSection() {
             ))}
           </select>
         </div>
+
+        <div className="flex-1 min-w-[200px]">
+          <label className="text-sm font-medium text-[#374151] font-sans block mb-1.5">
+            Filtrer par utilisateur
+          </label>
+          <select
+            className="w-full px-3 py-2.5 rounded-xl border border-[#E5E7EB] text-sm bg-white
+                       focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]/30"
+            value={userFilter}
+            onChange={(e) => {
+              setUserFilter(e.target.value);
+              reset();
+            }}
+          >
+            <option value="">Tous les utilisateurs</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.login} ({u.role})
+              </option>
+            ))}
+          </select>
+        </div>
+
         <Button
           variant="ghost"
           onClick={() => {
             setActionFilter("");
+            setUserFilter("");
             reset();
             refetch();
           }}
@@ -729,6 +888,167 @@ function AuditSection() {
         <div className="px-5 pb-3">
           <Pagination {...paginationProps(total)} />
         </div>
+      </Card>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   Section 5 — Gestion des Agents
+───────────────────────────────────────────────────────────────────── */
+function AgentsSection() {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [adding, setAdding] = useState(false);
+  const [toggling, setToggling] = useState(null);
+
+  const [form, setForm] = useState({
+    login: "",
+    password: "",
+    role_name: "compliance_officer",
+  });
+
+  const loadUsers = useCallback(() => {
+    setLoading(true);
+    adminService
+      .getUsers()
+      .then((d) => {
+        setUsers(d.items || d || []);
+      })
+      .catch(() => {
+        setUsers([]);
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    loadUsers();
+  }, [loadUsers]);
+
+  const handleToggleActive = async (user) => {
+    setToggling(user.id);
+    try {
+      await adminService.toggleUserActive(user.id);
+      toast.success(`Statut de ${user.login} mis à jour`);
+      loadUsers();
+    } catch (err) {
+      const errMsg = err.response?.data?.detail || "Action impossible";
+      toast.error(errMsg);
+    } finally {
+      setToggling(null);
+    }
+  };
+
+  const handleAddAgent = async (e) => {
+    e.preventDefault();
+    if (!form.login.trim() || !form.password.trim()) {
+      toast.error("Veuillez remplir tous les champs obligatoires");
+      return;
+    }
+
+    setAdding(true);
+    try {
+      await adminService.createUser({
+        login: form.login.trim(),
+        password: form.password.trim(),
+        role_name: form.role_name,
+      });
+      toast.success(`Agent ${form.login} créé avec succès`);
+      setForm({
+        login: "",
+        password: "",
+        role_name: "compliance_officer",
+      });
+      loadUsers();
+    } catch (err) {
+      const errMsg = err.response?.data?.detail || "Création impossible";
+      toast.error(errMsg);
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  if (loading) return <Loader />;
+
+  const columns = [
+    { key: "login", label: "Identifiant / Login", render: (v) => <span className="font-semibold">{v}</span> },
+    {
+      key: "role",
+      label: "Rôle",
+      render: (v) => (
+        <Badge type={v === "admin" ? "PEP" : "MOYEN"}>
+          {v === "admin" ? "Administrateur" : "Compliance Officer"}
+        </Badge>
+      ),
+    },
+    {
+      key: "is_active",
+      label: "Statut",
+      render: (v) => (
+        <span className={clsx("font-semibold text-xs", v ? "text-[#10B981]" : "text-[#EF4444]")}>
+          {v ? "✓ Actif" : "✗ Inactif"}
+        </span>
+      ),
+    },
+    {
+      key: "id",
+      label: "Actions",
+      render: (_, row) => (
+        <Button
+          size="sm"
+          variant={row.is_active ? "ghost" : "outline"}
+          loading={toggling === row.id}
+          onClick={() => handleToggleActive(row)}
+        >
+          {row.is_active ? "Désactiver" : "Activer"}
+        </Button>
+      ),
+    },
+  ];
+
+  return (
+    <div className="space-y-6">
+      {/* Formulaire ajout */}
+      <Card title="Ajouter un nouvel agent">
+        <form onSubmit={handleAddAgent}>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+            <FormInput
+              label="Identifiant (Login)"
+              required
+              value={form.login}
+              onChange={(e) => setForm((f) => ({ ...f, login: e.target.value }))}
+              placeholder="ex. bio_tchane"
+            />
+            <FormInput
+              label="Mot de passe"
+              type="password"
+              required
+              value={form.password}
+              onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+              placeholder="••••••••"
+            />
+            <FormSelect
+              label="Rôle de l'agent"
+              value={form.role_name}
+              onChange={(e) => setForm((f) => ({ ...f, role_name: e.target.value }))}
+            >
+              <option value="compliance_officer">Compliance Officer</option>
+              <option value="admin">Administrateur</option>
+            </FormSelect>
+          </div>
+          <Button type="submit" loading={adding} className="mt-4">
+            <Plus className="w-4 h-4" /> Créer le compte
+          </Button>
+        </form>
+      </Card>
+
+      {/* Liste des agents */}
+      <Card title="Agents enregistrés" noPad>
+        <Table
+          columns={columns}
+          data={users}
+          emptyText="Aucun agent enregistré."
+        />
       </Card>
     </div>
   );
@@ -776,6 +1096,7 @@ export default function AdminPage() {
           {tab === "criteria" && <CriteriaSection />}
           {tab === "thresholds" && <ThresholdsSection />}
           {tab === "pep" && <PepSection />}
+          {tab === "agents" && <AgentsSection />}
           {tab === "audit" && <AuditSection />}
         </div>
       </div>

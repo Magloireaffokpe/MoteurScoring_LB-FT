@@ -108,6 +108,15 @@ export const customerService = {
   getTransactionById: (transactionId) =>
     api.get(`/api/transactions/${transactionId}`).then((r) => r.data),
 
+  /**
+   * POST /api/customers/{customer_id}/transactions
+   * Ajoute une transaction pour le client courant
+   */
+  createTransaction: (customerId, body) =>
+    api
+      .post(`/api/customers/${customerId}/transactions`, body)
+      .then((r) => r.data),
+
   // ── Scores (sous-ressource) ───────────────────────────────────────────────
 
   /**

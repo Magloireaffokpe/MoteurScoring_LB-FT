@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import get_current_user
 from app.db.session import get_db
 from app.models.users import User
+from app.models.customers import Customer
 from app.services import audit_service
 from app.services.export_service import (
     generate_customer_pdf,
@@ -111,6 +112,9 @@ async def export_customer_pdf(
     - **customer_id** : UUID du client à exporter.
     """
     _check_role(current_user)
+    customer = db.query(Customer).filter(Customer.id == customer_id).first()
+    if not customer:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client introuvable")
 
     try:
         pdf_bytes = generate_customer_pdf(
@@ -140,7 +144,7 @@ async def export_customer_pdf(
     except Exception:
         pass   # L'audit ne doit jamais bloquer l'export
 
-    filename = f"fiche_client_{customer_id}_{_today_str()}.pdf"
+    filename = f"fiche_client_{customer.nom} {customer.prenom}_{customer_id}_{_today_str()}.pdf"
     logger.info("Export PDF client — %s — agent=%s", customer_id, current_user.id)
 
     return StreamingResponse(
@@ -196,6 +200,9 @@ async def export_transactions_csv(
     - **days**        : nombre de jours à exporter (défaut 90, max 730).
     """
     _check_role(current_user)
+    customer = db.query(Customer).filter(Customer.id == customer_id).first()
+    if not customer:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client introuvable")
 
     try:
         csv_bytes = generate_transactions_csv(
@@ -225,7 +232,7 @@ async def export_transactions_csv(
     except Exception:
         pass
 
-    filename = f"transactions_{customer_id}_{_today_str()}.csv"
+    filename = f"transactions_{customer.nom} {customer.prenom}_{customer_id}_{_today_str()}.csv"
     logger.info("Export CSV transactions — %s — %d jours", customer_id, days)
 
     return StreamingResponse(

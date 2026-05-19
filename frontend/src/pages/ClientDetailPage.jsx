@@ -1,5 +1,5 @@
 // src/pages/ClientDetailPage.jsx
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   Clock,
   FileCheck,
+  Edit,
 } from "lucide-react";
 
 import { Layout } from "../components/Layout";
@@ -19,7 +20,10 @@ import { Badge } from "../components/Badge";
 import { Loader } from "../components/Loader";
 import { Table } from "../components/Table";
 import { ScorePanel } from "../components/ScorePanel";
+import { Modal, ModalFooter } from "../components/Modal";
+import { FormInput, FormSelect } from "../components/FormInput";
 
+import { useAuthContext } from "../context/AuthContext";
 import { customerService } from "../services/customerService";
 import { scoringService } from "../services/scoringService";
 import { exportService } from "../services/exportService";
@@ -42,6 +46,7 @@ import toast from "react-hot-toast";
 const TABS = [
   { id: "kyc", label: "Informations KYC", icon: User },
   { id: "scoring", label: "Scoring & Historique", icon: RefreshCw },
+  { id: "transactions", label: "Transactions", icon: Clock },
   { id: "alerts", label: "Alertes", icon: AlertTriangle },
 ];
 
@@ -67,9 +72,23 @@ function InfoRow({ label, value, highlight, danger }) {
 export default function ClientDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { isAdmin } = useAuthContext();
   const [tab, setTab] = useState("kyc");
   const [rescoring, setRescoring] = useState(false);
   const [exporting, setExporting] = useState(null);
+
+  // Modal d'ajout de transaction
+  const [showTxModal, setShowTxModal] = useState(false);
+  const [submittingTx, setSubmittingTx] = useState(false);
+  const [txForm, setTxForm] = useState({
+    type_op: "DEPOT",
+    montant: "",
+    canal: "GUICHET",
+    origine: "",
+    destination: "",
+    devise: "XOF",
+  });
+  const [txErrors, setTxErrors] = useState({});
 
   // Chargement données client
   const {
@@ -86,10 +105,28 @@ export default function ClientDetailPage() {
     () => customerService.getAlerts(id),
     [id],
   );
+  const { data: transactionsData, refetch: refetchTransactions } = useFetch(
+    () => customerService.getTransactions(id, { limit: 100 }),
+    [id],
+  );
 
   const scores = scoresData?.items || [];
   const alerts = alertsData?.items || [];
+  const transactions = transactionsData?.items || [];
   const currentScore = scores.find((s) => s.is_current) || scores[0];
+
+  const [currentScoreDetail, setCurrentScoreDetail] = useState(null);
+
+  useEffect(() => {
+    if (currentScore?.id) {
+      scoringService
+        .getById(currentScore.id)
+        .then(setCurrentScoreDetail)
+        .catch(() => setCurrentScoreDetail(null));
+    } else {
+      setCurrentScoreDetail(null);
+    }
+  }, [currentScore?.id]);
 
   const handleRescore = async () => {
     setRescoring(true);
@@ -120,6 +157,46 @@ export default function ClientDetailPage() {
     }
   };
 
+  const handleAddTransaction = async (e) => {
+    e.preventDefault();
+    const errors = {};
+    if (!txForm.montant || Number(txForm.montant) <= 0) {
+      errors.montant = "Le montant doit être supérieur à 0";
+    }
+    if (Object.keys(errors).length > 0) {
+      setTxErrors(errors);
+      return;
+    }
+    setTxErrors({});
+    setSubmittingTx(true);
+
+    try {
+      const compteId = client?.accounts?.[0]?.id || null;
+      await customerService.createTransaction(id, {
+        ...txForm,
+        compte_id: compteId,
+        montant: Number(txForm.montant),
+      });
+      toast.success("Transaction ajoutée avec succès");
+      setShowTxModal(false);
+      setTxForm({
+        type_op: "DEPOT",
+        montant: "",
+        canal: "GUICHET",
+        origine: "",
+        destination: "",
+        devise: "XOF",
+      });
+      await refetchTransactions();
+      await handleRescore();
+    } catch (err) {
+      console.error("Erreur d'ajout de transaction", err);
+      toast.error("Impossible d'ajouter la transaction");
+    } finally {
+      setSubmittingTx(false);
+    }
+  };
+
   if (loading)
     return (
       <Layout pageTitle="Fiche client">
@@ -141,6 +218,60 @@ export default function ClientDetailPage() {
       : kycCompletion >= 50
         ? "#F59E0B"
         : "#EF4444";
+
+  /* Colonnes transactions */
+  const txCols = [
+    { key: "date_op", label: "Date & Heure", render: (v) => formatDatetime(v) },
+    {
+      key: "type_op",
+      label: "Type",
+      render: (v) => (
+        <Badge
+          type={
+            v === "DEPOT"
+              ? "FAIBLE"
+              : v === "RETRAIT"
+                ? "MOYEN"
+                : "ÉLEVÉ"
+          }
+        >
+          {v}
+        </Badge>
+      ),
+    },
+    {
+      key: "montant",
+      label: "Montant",
+      render: (v, row) => (
+        <span className="font-bold font-mono">
+          {formatAmount(v)} {row.devise || "XOF"}
+        </span>
+      ),
+    },
+    {
+      key: "canal",
+      label: "Canal",
+      render: (v) => <span className="text-xs">{v || "—"}</span>,
+    },
+    {
+      key: "origine",
+      label: "Origine",
+      render: (v) => (
+        <span className="text-xs truncate max-w-[120px] inline-block">
+          {v || "—"}
+        </span>
+      ),
+    },
+    {
+      key: "destination",
+      label: "Destination",
+      render: (v) => (
+        <span className="text-xs truncate max-w-[120px] inline-block">
+          {v || "—"}
+        </span>
+      ),
+    },
+  ];
 
   /* Colonnes historique scores */
   const scoreCols = [
@@ -252,6 +383,15 @@ export default function ClientDetailPage() {
           </button>
           <div className="flex-1" />
           <div className="flex items-center gap-2 flex-wrap">
+            {isAdmin && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate(`/clients/${id}/edit`)}
+              >
+                <Edit className="w-4 h-4" /> Modifier
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="sm"
@@ -477,11 +617,11 @@ export default function ClientDetailPage() {
           <div className="space-y-5">
             {currentScore ? (
               <ScorePanel
-                score={currentScore.global_score}
-                riskCategory={currentScore.risk_category}
-                detailJson={currentScore.detail_json}
-                scoredAt={currentScore.scored_at}
-                scoredBy={currentScore.scored_by}
+                score={currentScoreDetail?.global_score ?? currentScore.global_score}
+                riskCategory={currentScoreDetail?.risk_category ?? currentScore.risk_category}
+                detailJson={currentScoreDetail?.detail_json}
+                scoredAt={currentScoreDetail?.scored_at ?? currentScore.scored_at}
+                scoredBy={currentScoreDetail?.scored_by ?? currentScore.scored_by}
               />
             ) : (
               <Card>
@@ -506,6 +646,30 @@ export default function ClientDetailPage() {
           </div>
         )}
 
+        {tab === "transactions" && (
+          <div className="space-y-5">
+            <Card
+              title="Transactions récentes"
+              action={
+                <Button
+                  size="sm"
+                  variant="primary"
+                  onClick={() => setShowTxModal(true)}
+                >
+                  + Ajouter une transaction
+                </Button>
+              }
+              noPad
+            >
+              <Table
+                columns={txCols}
+                data={transactions}
+                emptyText="Aucune transaction récente pour ce client"
+              />
+            </Card>
+          </div>
+        )}
+
         {tab === "alerts" && (
           <Card title="Alertes du client" noPad>
             <Table
@@ -516,6 +680,92 @@ export default function ClientDetailPage() {
           </Card>
         )}
       </div>
+
+      {/* Modal d'ajout de transaction */}
+      <Modal
+        open={showTxModal}
+        onClose={() => setShowTxModal(false)}
+        title="Ajouter une transaction"
+        size="md"
+      >
+        <form onSubmit={handleAddTransaction} className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormSelect
+              label="Type d'opération"
+              required
+              value={txForm.type_op}
+              onChange={(e) => setTxForm({ ...txForm, type_op: e.target.value })}
+            >
+              <option value="DEPOT">DEPOT (Dépôt)</option>
+              <option value="RETRAIT">RETRAIT (Retrait)</option>
+              <option value="VIREMENT">VIREMENT (Virement)</option>
+            </FormSelect>
+
+            <FormInput
+              label="Montant (XOF)"
+              type="number"
+              required
+              placeholder="ex : 150000"
+              value={txForm.montant}
+              onChange={(e) => setTxForm({ ...txForm, montant: e.target.value })}
+              error={txErrors.montant}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormSelect
+              label="Canal"
+              required
+              value={txForm.canal}
+              onChange={(e) => setTxForm({ ...txForm, canal: e.target.value })}
+            >
+              <option value="GUICHET">GUICHET</option>
+              <option value="MOBILE">MOBILE</option>
+              <option value="INTERNET">INTERNET</option>
+              <option value="ATM">ATM</option>
+            </FormSelect>
+
+            <FormInput
+              label="Devise"
+              required
+              disabled
+              value={txForm.devise}
+            />
+          </div>
+
+          <FormInput
+            label="Origine"
+            placeholder="ex : Koffi BIAOU"
+            value={txForm.origine}
+            onChange={(e) => setTxForm({ ...txForm, origine: e.target.value })}
+          />
+
+          <FormInput
+            label="Destination"
+            placeholder="ex : Compte Épargne"
+            value={txForm.destination}
+            onChange={(e) => setTxForm({ ...txForm, destination: e.target.value })}
+          />
+
+          <ModalFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setShowTxModal(false)}
+              disabled={submittingTx}
+            >
+              Annuler
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              loading={submittingTx}
+            >
+              Ajouter & Recalculer le score
+            </Button>
+          </ModalFooter>
+        </form>
+      </Modal>
     </Layout>
   );
 }
