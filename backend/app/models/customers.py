@@ -30,8 +30,8 @@ class Customer(Base):
     region = Column(String(100), nullable=True)
     latitude = Column(String(20), nullable=True)
     longitude = Column(String(20), nullable=True)
-    zone_geo = Column(Integer, ForeignKey("risk_zones.id"), nullable=True)
-    pays = Column(Integer, ForeignKey("countries.id"), nullable=True)
+    zone_geo = Column(Integer, ForeignKey("risk_zones.id"), nullable=True, index=True)
+    pays = Column(Integer, ForeignKey("countries.id"), nullable=True, index=True)
 
     # LBC/FT
     statut_pep = Column(Boolean, default=False,server_default=sa.text("false"),index=True)

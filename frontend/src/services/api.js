@@ -8,20 +8,7 @@ export const api = axios.create({
   baseURL: BASE_URL,
   headers: { "Content-Type": "application/json" },
   timeout: 30_000,
-});
-
-// ── Injecte le JWT automatiquement dans chaque requête ────────────────────
-api.interceptors.request.use((config) => {
-  try {
-    const stored = localStorage.getItem("rg_session");
-    if (stored) {
-      const { token } = JSON.parse(stored);
-      if (token) config.headers.Authorization = `Bearer ${token}`;
-    }
-  } catch {
-    /* silently ignore */
-  }
-  return config;
+  withCredentials: true,
 });
 
 // ── Gestion globale des erreurs HTTP ──────────────────────────────────────
@@ -38,8 +25,11 @@ api.interceptors.response.use(
           ? detail.map((d) => d.msg || d.message).join(", ")
           : err.message || "Erreur réseau";
 
+    if (err.config?.silent) {
+      return Promise.reject(err);
+    }
+
     if (status === 401) {
-      localStorage.removeItem("rg_session");
       window.location.href = "/login";
       toast.error("Session expirée, veuillez vous reconnecter.");
     } else if (status === 403) {

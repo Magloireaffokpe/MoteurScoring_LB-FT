@@ -10,7 +10,7 @@ export const customerService = {
    * GET /api/clients?skip=0&limit=25&search=&kyc_level=&status=
    * Retourne { items: [...], total, skip, limit }
    */
-  list: (params) => api.get("/api/clients", { params }).then((r) => r.data),
+  list: (params, config = {}) => api.get("/api/clients", { params, ...config }).then((r) => r.data),
 
   /**
    * GET /api/clients/{customer_id}
@@ -20,18 +20,15 @@ export const customerService = {
 
   /**
    * POST /api/clients
-   * Body conforme au contrat API :
+   * Body conforme au contrat backend :
    * {
-   *   first_name, last_name, date_of_birth, phone, email,
-   *   nationality_id, profession_code, profession_name,
-   *   profession_risk_category, monthly_income,
-   *   city, region, zone_geo_classification, latitude, longitude
+   *   nom, prenom, date_naissance, phone, email,
+   *   profession_code, profession_name, profession_risk,
+   *   revenus_declares, city, region, zone_geo, latitude, longitude,
+   *   pays, statut_pep
    * }
-   * NB : le routeur backend (customers.py de Marcos) mappe vers les champs Customer :
-   *   prenom, nom, date_naissance, phone, email,
-   *   pays (FK int → countries.id), profession_code, profession_name,
-   *   profession_risk ('LOW'|'MEDIUM'|'HIGH'), revenus_declares,
-   *   city, region, zone_geo (FK int → risk_zones.id), latitude, longitude
+   * Champs mappés sur Customer :
+   *   pays (FK int → countries.id), zone_geo (FK int → risk_zones.id)
    */
   create: (body) => api.post("/api/clients", body).then((r) => r.data),
 
@@ -62,6 +59,12 @@ export const customerService = {
   getAccountById: (accountId) =>
     api.get(`/api/accounts/${accountId}`).then((r) => r.data),
 
+  /**
+   * POST /api/customers/{customer_id}/accounts
+   */
+  createAccount: (customerId, body) =>
+    api.post(`/api/customers/${customerId}/accounts`, body).then((r) => r.data),
+
   // ── Documents KYC (sous-ressource) ───────────────────────────────────────
 
   /**
@@ -83,7 +86,11 @@ export const customerService = {
    */
   getDocumentById: (docId) =>
     api.get(`/api/documents/${docId}`).then((r) => r.data),
-
+  /**
+   * POST /api/customers/{customer_id}/documents
+   */
+  createDocument: (customerId, body) =>
+    api.post(`/api/customers/${customerId}/documents`, body).then((r) => r.data),
   // ── Transactions (sous-ressource) ────────────────────────────────────────
 
   /**
@@ -147,23 +154,23 @@ export const customerService = {
 // ── Référentiels ────────────────────────────────────────────────────────────
 /**
  * Service référentiels (pays, zones) avec fallback mock
- * si les endpoints /api/referentials/* ne sont pas encore implémentés.
+ * si les endpoints backend ne sont pas disponibles.
  */
 export const referentialService = {
   /**
-   * GET /api/referentials/countries
+   * GET /api/countries
    * Champs alignés avec Country (countries.py) :
    *   { id, code_iso, name, is_uemoa, is_border, is_fatf }
    * Fallback : MOCK_COUNTRIES (synchronisé avec seed_db.py de Marcos)
    */
   countries: () =>
     api
-      .get("/api/referentials/countries")
+      .get("/api/countries")
       .then((r) => r.data)
       .catch(() => MOCK_COUNTRIES),
 
   /**
-   * GET /api/referentials/risk-zones
+   * GET /api/risk-zones
    * Champs alignés avec RiskZone (risk_zones.py) :
    *   { id, name, risk_level, description }
    *   risk_level : 'FAIBLE' | 'MOYEN' | 'ELEVE' | 'TRES_ELEVE'
@@ -171,7 +178,7 @@ export const referentialService = {
    */
   riskZones: () =>
     api
-      .get("/api/referentials/risk-zones")
+      .get("/api/risk-zones")
       .then((r) => r.data)
       .catch(() => MOCK_RISK_ZONES),
 };

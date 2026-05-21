@@ -1,0 +1,42 @@
+# ──────────────────────────────────────
+# Python
+# ──────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+.venv
+venv/
+env/
+ENV/
+.pytest_cache/
+.coverage
+coverage/
+htmlcov/
+.tox/
+.mypy_cache/
+*.log
+test_result.log
+
+# ──────────────────────────────────────
+# Environment (contains secrets)
+# ──────────────────────────────────────
+.env
+.env.local
+.env.*.local
+secrets.json
+*.key
+*.pem
+
+# ──────────────────────────────────────
+# IDE / OS
+# ──────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db

@@ -1,35 +1,44 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+import logging
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from typing import Optional
 from uuid import UUID
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from app.db.session import get_db
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_compliance_or_admin
 from app.models.transactions import Transaction
 from app.models.customer_accounts import CustomerAccount
-from app.schemas.transaction import TransactionResponse, TransactionCreate
+from app.models.scores import Score
+from app.schemas.transaction import TransactionCreateResponse, TransactionCreate
 from app.schemas.common import PaginatedResponse
+from app.schemas.score import _normalize_risk_category
+from app.services.audit_service import log_action, ACTION_SCORING_RESCORE
+from app.services.scoring import ScoringEngine
+from app.services.alert_service import (
+    create_score_alert_if_needed,
+    create_pep_alert_if_needed,
+    create_smurfing_alert_if_needed,
+    create_card_testing_alert_if_needed,
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
 @router.get("/customers/{customer_id}/transactions",
-            response_model=PaginatedResponse[TransactionResponse])
+            response_model=PaginatedResponse[TransactionCreateResponse])
 def get_customer_transactions(
     customer_id: UUID,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
-    days: int = Query(90, ge=1, le=365),  # fenêtre temporelle
+    days: int = Query(90, ge=1, le=365),
     type_op: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
-    """
-    Transactions d'un client sur une fenêtre temporelle.
-    Par défaut : 90 derniers jours (utilisé par ScoringEngine C3).
-    """
-    since = datetime.utcnow() - timedelta(days=days)
+    since = datetime.now(timezone.utc) - timedelta(days=days)
 
     query = db.query(Transaction)\
         .join(Transaction.account)\
@@ -46,91 +55,85 @@ def get_customer_transactions(
     return PaginatedResponse(items=items, total=total, skip=skip, limit=limit)
 
 
-@router.get("/transactions/{transaction_id}", response_model=TransactionResponse)
+@router.get("/transactions/{transaction_id}", response_model=TransactionCreateResponse)
 def get_transaction(
     transaction_id: UUID,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
-    """Détail d'une transaction."""
     tx = db.query(Transaction).filter(Transaction.id == transaction_id).first()
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
     return tx
 
 
-@router.post("/customers/{customer_id}/transactions", response_model=TransactionResponse)
-def create_customer_transaction(
+@router.post("/customers/{customer_id}/transactions",
+             response_model=TransactionCreateResponse, status_code=201)
+def create_transaction(
     customer_id: UUID,
-    transaction_in: TransactionCreate,
+    data: TransactionCreate,
+    http_request: Request,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user)
+    current_user=Depends(require_compliance_or_admin)
 ):
-    """
-    Crée une nouvelle transaction pour un client et déclenche le recalcul du score.
-    """
-    # Vérifie que le compte appartient bien au client
-    compte = db.query(CustomerAccount).filter(
-        CustomerAccount.id == transaction_in.compte_id,
+    account = db.query(CustomerAccount).filter(
+        CustomerAccount.id == data.compte_id,
         CustomerAccount.client_id == customer_id
     ).first()
-    if not compte:
-        raise HTTPException(
-            status_code=404,
-            detail="Account not found or does not belong to this customer"
-        )
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found for this customer")
 
-    # Crée la transaction
-    db_tx = Transaction(
-        compte_id=transaction_in.compte_id,
-        montant=transaction_in.montant,
-        devise=transaction_in.devise,
-        type_op=transaction_in.type_op,
-        canal=transaction_in.canal,
-        origine=transaction_in.origine,
-        destination=transaction_in.destination,
-        origine_pays_id=transaction_in.origine_pays_id,
-        destination_pays_id=transaction_in.destination_pays_id,
-    )
-    db.add(db_tx)
-    db.commit()
-    db.refresh(db_tx)
+    tx = Transaction(**data.model_dump())
+    db.add(tx)
+    db.flush()
 
-    # Recalculer le score LBC/FT du client suite à la nouvelle transaction
+    log_action(db, str(current_user.id), "CREATE_TRANSACTION",
+               client_id=str(customer_id))
+
+    # ── Auto-rescore ──────────────────────────────────────────────────────
+    new_score_global = None
+    new_score_category = None
     try:
-        from app.services.scoring import ScoringEngine
-        from app.routers.scoring import _mark_previous_scores_as_not_current
-        from app.models.score import Score
-        from app.services import alert_service
-
         engine = ScoringEngine(db)
         result = engine.calculate_score(customer_id)
 
-        # Archiver l'ancien score courant
-        _mark_previous_scores_as_not_current(db, customer_id)
+        db.query(Score).filter(
+            Score.client_id == customer_id,
+            Score.is_current == True,
+        ).update({"is_current": False}, synchronize_session=False)
 
-        # Persister le nouveau score
-        new_score = Score(
+        score = Score(
             client_id=customer_id,
             score_global=result["global_score"],
             detail_json=result["detail_json"],
             categorie=result["risk_category"],
             is_current=True,
-            calcule_par="AUTOMATED",
+            calcule_par=str(current_user.id),
         )
-        db.add(new_score)
-        db.commit()
+        db.add(score)
+        db.flush()
 
-        # Alerte automatique si score élevé
-        alert_service.create_score_alert_if_needed(
-            db=db,
-            customer_id=customer_id,
-            global_score=result["global_score"],
-            skip_if_open=True,
+        new_score_global = result["global_score"]
+        new_score_category = _normalize_risk_category(result["risk_category"])
+
+        create_score_alert_if_needed(db, customer_id, result["global_score"], skip_if_open=True)
+        create_pep_alert_if_needed(db, customer_id, result["c5_score"], skip_if_open=True)
+        if result["smurfing_detected"]:
+            create_smurfing_alert_if_needed(db, customer_id, skip_if_open=True)
+        create_card_testing_alert_if_needed(
+            db, customer_id, micro_tx_count=result["card_testing_count"], skip_if_open=True
         )
-        db.commit()
-    except Exception:
-        # En cas d'erreur de scoring, on ne bloque pas la transaction elle-même
-        pass
 
-    return db_tx
+        log_action(db, str(current_user.id), ACTION_SCORING_RESCORE,
+                   resource_type="customer", resource_id=str(customer_id),
+                   ip_address=http_request.client.host if http_request.client else None)
+    except Exception as exc:
+        logger.error("Auto-rescore failed after transaction: %s", exc)
+
+    db.commit()
+    db.refresh(tx)
+
+    resp = TransactionCreateResponse.model_validate(tx)
+    resp.new_score_global = new_score_global
+    resp.new_score_category = new_score_category
+    return resp

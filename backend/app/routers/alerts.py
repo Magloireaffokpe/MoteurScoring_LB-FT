@@ -4,7 +4,7 @@ from typing import Optional
 from uuid import UUID
 
 from app.db.session import get_db
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_compliance_or_admin
 from app.models.alerts import Alert
 from app.schemas.alert import AlertCreate, AlertUpdate, AlertResponse
 from app.schemas.common import PaginatedResponse
@@ -16,7 +16,7 @@ router = APIRouter()
 @router.get("/alerts", response_model=PaginatedResponse[AlertResponse])
 def list_alerts(
     skip: int = Query(0, ge=0),
-    limit: int = Query(25, ge=1, le=100),
+    limit: int = Query(25, ge=1, le=1000),
     statut: Optional[str] = None,        # 'OPEN', 'UNDER_REVIEW', 'CLOSED'
     type_alerte: Optional[str] = None,   # 'SCORE_ELEVE', 'KYC_INCOMPLET', 'PEP_DETECTE'
     sar_declare: Optional[bool] = None,
@@ -62,7 +62,7 @@ def get_alert(
 def get_customer_alerts(
     customer_id: UUID,
     skip: int = Query(0, ge=0),
-    limit: int = Query(25, ge=1, le=100),
+    limit: int = Query(25, ge=1, le=1000),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
@@ -79,7 +79,7 @@ def get_customer_alerts(
 def create_alert(
     data: AlertCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user)
+    current_user=Depends(require_compliance_or_admin)
 ):
     """Crée une alerte manuelle."""
     alert = Alert(**data.model_dump())
@@ -97,7 +97,7 @@ def update_alert(
     alert_id: UUID,
     data: AlertUpdate,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user)
+    current_user=Depends(require_compliance_or_admin)
 ):
     """
     Met à jour une alerte — statut, décision, SAR.
@@ -112,9 +112,9 @@ def update_alert(
 
     # Si clôture — enregistre l'agent
     if data.statut == "CLOSED":
-        from datetime import datetime
+        from datetime import datetime, timezone
         alert.clos_par = current_user.id
-        alert.date_cloture = datetime.utcnow()
+        alert.date_cloture = datetime.now(timezone.utc)
 
     db.commit()
     db.refresh(alert)

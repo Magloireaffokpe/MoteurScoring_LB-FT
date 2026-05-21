@@ -7,7 +7,7 @@ export const alertService = {
    * Retourne { items: [...], total }
    * Champs Alert (alerts.py) : type_alerte, statut, sar_declare, date_creation
    */
-  list: (params) => api.get("/api/alerts", { params }).then((r) => r.data),
+  list: (params, config = {}) => api.get("/api/alerts", { params, ...config }).then((r) => r.data),
 
   /**
    * GET /api/alerts/{alert_id}

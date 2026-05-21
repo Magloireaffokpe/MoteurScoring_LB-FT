@@ -879,7 +879,7 @@ export function setupMocks() {
     }
 
     // ── Référentiels ──────────────────────────────────────────────
-    if (method === "GET" && url === "/api/referentials/countries") {
+    if (method === "GET" && url === "/api/countries") {
       const countries = [
         {
           id: 1,
@@ -940,7 +940,7 @@ export function setupMocks() {
       return config;
     }
 
-    if (method === "GET" && url === "/api/referentials/risk-zones") {
+    if (method === "GET" && url === "/api/risk-zones") {
       const zones = [
         {
           id: 1,

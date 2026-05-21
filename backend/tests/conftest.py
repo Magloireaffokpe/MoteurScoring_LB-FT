@@ -1,14 +1,11 @@
 import sys
 import os
 import uuid
-
-
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# Maintenant les imports de l'application fonctionnent
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from app.main import app
 from app.db.base import Base
@@ -21,8 +18,25 @@ from app.models.scoring_criteria import ScoringCriteria
 from app.models.risk_thresholds import RiskThreshold
 from app.auth.security import hash_password, create_access_token
 
-# ── Base de données de test ───────────────────────────────────────────────────
-TEST_DATABASE_URL = "postgresql://marcos:dev_password_change_in_prod@localhost:5433/scoring_test_db"
+# ── Base de données de test (SQLite pour isolation totale) ──────────────────
+TEST_DATABASE_URL = os.getenv(
+    "TEST_DATABASE_URL",
+    "sqlite:////tmp/test_scoring.db"
+)
+
+# Adapte les types PostgreSQL → SQLite pour les tests
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB as PG_JSONB
+from sqlalchemy import String, Text
+
+@event.listens_for(Base.metadata, "before_create")
+def _replace_pg_types(target, connection, **kw):
+    if connection.engine.name == "sqlite":
+        for table in target.tables.values():
+            for col in table.columns:
+                if isinstance(col.type, PG_UUID):
+                    col.type = String(36)
+                elif isinstance(col.type, PG_JSONB):
+                    col.type = Text
 
 # ── Générateur de code_iso unique ──────────────────────────────────────────────
 _generated_iso_codes = set()
@@ -35,7 +49,12 @@ def _generate_unique_iso_code(prefix="T"):
             _generated_iso_codes.add(code)
             return code
 
-engine_test = create_engine(TEST_DATABASE_URL, pool_pre_ping=True)
+_is_sqlite = TEST_DATABASE_URL.startswith("sqlite")
+engine_test = create_engine(
+    TEST_DATABASE_URL,
+    connect_args={"check_same_thread": False} if _is_sqlite else {},
+    pool_pre_ping=not _is_sqlite,
+)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine_test)
 
 

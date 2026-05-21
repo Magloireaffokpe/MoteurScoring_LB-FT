@@ -11,46 +11,35 @@ import { authService } from "../services/authService";
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null); // { id, role, login?, full_name? }
+  const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Rehydratation depuis localStorage au montage
+  // Vérifie si une session existe via le cookie httpOnly
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem("rg_session");
-      if (stored) {
-        const { user: u, token: t } = JSON.parse(stored);
-        setUser(u);
-        setToken(t);
-      }
-    } catch {
-      localStorage.removeItem("rg_session");
-    } finally {
-      setLoading(false);
-    }
+    authService
+      .me()
+      .then((data) => {
+        setUser({ id: data.id, role: data.role, login: data.login });
+      })
+      .catch(() => {
+        setUser(null);
+        setToken(null);
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   const login = useCallback(async ({ login, password }) => {
     const data = await authService.login({ login, password });
-    // data = { access_token, token_type, user_id, role }
     const sessionUser = { id: data.user_id, role: data.role, login };
     setUser(sessionUser);
     setToken(data.access_token);
-    localStorage.setItem(
-      "rg_session",
-      JSON.stringify({
-        user: sessionUser,
-        token: data.access_token,
-      }),
-    );
     return data;
   }, []);
 
   const logout = useCallback(() => {
     setUser(null);
     setToken(null);
-    localStorage.removeItem("rg_session");
   }, []);
 
   // Helpers de rôle

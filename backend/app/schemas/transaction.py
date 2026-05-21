@@ -17,17 +17,21 @@ class TransactionResponse(BaseModel):
     origine_pays_id: Optional[int]
     destination_pays_id: Optional[int]
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
+
+
+class TransactionCreateResponse(TransactionResponse):
+    new_score_global: Optional[int] = None
+    new_score_category: Optional[str] = None
 
 
 class TransactionCreate(BaseModel):
     compte_id: UUID
     montant: float
     devise: str = "XOF"
-    type_op: str          # 'DEPOT', 'RETRAIT', 'VIREMENT', 'PAIEMENT'
+    type_op: str
     canal: str = "GUICHET"
-    origine: str = None
-    destination: str = None
-    origine_pays_id: int = None
-    destination_pays_id: int = None
+    origine: Optional[str] = None
+    destination: Optional[str] = None
+    origine_pays_id: Optional[int] = None
+    destination_pays_id: Optional[int] = None

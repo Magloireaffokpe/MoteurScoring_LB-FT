@@ -9,13 +9,13 @@ from uuid import UUID
 class AlertCreate(BaseModel):
     client_id:UUID
     type_alerte: str
-    statut : str = "OPEN" # OPEN, CLOSED, IN_PROGRESS
+    statut : str = "OPEN" # OPEN, UNDER_REVIEW, CLOSED
     decision : Optional[str] = None
     sar_declare: bool = False
 
 
 class AlertUpdate(BaseModel):
-    statut : Optional[str] = None # OPEN, CLOSED, IN_PROGRESS
+    statut : Optional[str] = None # OPEN, UNDER_REVIEW, CLOSED
     decision : Optional[str] = None
     sar_declare: Optional[bool] = None
 
@@ -31,3 +31,5 @@ class AlertResponse(BaseModel):
     date_creation: Optional[datetime]
     date_cloture: Optional[datetime]
     clos_par: Optional[UUID]
+
+    model_config = {"from_attributes": True}

@@ -10,9 +10,22 @@ Compatibilité seed_db.py (Marcos) :
   - RiskZone.risk_level     : 'FAIBLE' | 'MOYEN' | 'ELEVE' | 'TRES_ELEVE'
 
 Auteur  : Dev A — AFFOKPE Magloire
-Version : 1.2 — Mai 2026
+Version : 1.3 — Mai 2026
 
-Changelog v1.2 :
+Changelog v1.3 :
+  [Fix 7] _score_c5        : ancienne PEP (active=False) → note 50 au lieu de 0
+                             (recommandation GAFI R.12 — vigilance 5 ans post-mandat)
+  [Fix 8] _score_c3        : card testing — détection micro-transactions carte répétées
+                             (comportemental uniquement ; validité technique gérée ailleurs)
+  [Fix 9] _score_c3        : near-threshold smurfing — montants entre 80 % et 100 %
+                             du seuil FATF (495 000, 498 000 XOF…) ajoutés aux suspects
+  [Fix 10] _detect_duplicates : nouvelle méthode — transactions identiques (même montant
+                             arrondi + même destination) dans une fenêtre de 24 h
+  [Fix 11] calculate_score : result dict étendu avec smurfing_detected, card_testing_count
+                             et c5_score pour que le router puisse créer les alertes fines
+                             sans re-interroger la base
+
+Changelog v1.2 (inchangé) :
   [Fix 1] _load_weights      : suppression du filtre is_active (champ inexistant)
   [Fix 2] _get_category      : normalisation 'ELEVE' → 'ÉLEVÉ' (contrat API)
   [Fix 3] _detect_smurfing   : anti faux-positifs — concentration temporelle +
@@ -28,6 +41,7 @@ Changelog v1.2 :
 from __future__ import annotations
 
 import logging
+from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
@@ -48,25 +62,39 @@ logger = logging.getLogger(__name__)
 
 # ── Fallback si les tables de référence sont vides ────────────────────────
 _DEFAULT_WEIGHTS: dict[str, float] = {
-    "C1": 0.20, "C2": 0.20, "C3": 0.25,
-    "C4": 0.10, "C5": 0.15, "C6": 0.10,
+    "C1": 0.20,
+    "C2": 0.20,
+    "C3": 0.25,
+    "C4": 0.10,
+    "C5": 0.15,
+    "C6": 0.10,
 }
 
 _DEFAULT_THRESHOLDS = [
-    {"category": "FAIBLE", "min_score": 0,  "max_score": 33},
-    {"category": "MOYEN",  "min_score": 34, "max_score": 66},
-    {"category": "ÉLEVÉ",  "min_score": 67, "max_score": 100},
+    {"category": "FAIBLE", "min_score": 0, "max_score": 33},
+    {"category": "MOYEN", "min_score": 34, "max_score": 66},
+    {"category": "ÉLEVÉ", "min_score": 67, "max_score": 100},
 ]
 
 # ── Paramètres C3 ─────────────────────────────────────────────────────────
-_TX_WINDOW_DAYS = 90           # fenêtre d'analyse des transactions
+_TX_WINDOW_DAYS = 90  # fenêtre d'analyse des transactions
 
 # Smurfing — détection du fractionnement
-_SMURFING_THRESHOLD    = 500_000   # XOF : seuil déclaratif FATF
-_SMURFING_ROUND_STEP   = 10_000    # les montants suspects sont multiples de 10k
-_SMURFING_MIN_COUNT    = 3         # nb minimum de tx suspects pour déclencher
-_SMURFING_WINDOW_DAYS  = 7         # [Fix 3] fenêtre de concentration temporelle
-_SMURFING_REVENUE_MULT = 3.0       # [Fix 3] ratio min total_suspect / revenu_mensuel
+_SMURFING_THRESHOLD = 500_000  # XOF : seuil déclaratif FATF
+_SMURFING_ROUND_STEP = 10_000  # montants suspects : multiples de 10k
+_SMURFING_MIN_COUNT = 3  # nb minimum de tx suspects pour déclencher
+_SMURFING_WINDOW_DAYS = 7  # fenêtre de concentration temporelle [Fix 3]
+_SMURFING_REVENUE_MULT = 3.0  # ratio min total_suspect / revenu_mensuel [Fix 3]
+_SMURFING_NEAR_LOW_PCT = 0.80  # borne basse near-threshold : 80 % du seuil [Fix 9]
+
+# Card testing — micro-transactions carte [Fix 8]
+_CARD_TESTING_MAX_AMOUNT = 1_000  # XOF : seuil micro-transaction
+_CARD_TESTING_ALERT_COUNT = 5  # nb min pour alerte forte
+_CARD_TESTING_WARN_COUNT = 2  # nb min pour alerte modérée
+
+# Transactions dupliquées [Fix 10]
+_DUPLICATE_WINDOW_SECONDS = 86_400  # 24 h
+_DUPLICATE_ROUND_TO = -2  # arrondir à la centaine pour tolérer les frais
 
 
 def _naive_utc_now() -> datetime:
@@ -80,6 +108,13 @@ def _naive_utc_now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+def _strip_tz(d: datetime | None) -> datetime | None:
+    """Normalise un datetime en naive UTC (cohérence [Fix 6])."""
+    if d is not None and hasattr(d, "tzinfo") and d.tzinfo is not None:
+        return d.replace(tzinfo=None)
+    return d
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 class ScoringEngine:
     """
@@ -90,19 +125,23 @@ class ScoringEngine:
         engine = ScoringEngine(db_session)
         result = engine.calculate_score(customer_id)
 
-    Résultat conforme au contrat API v1.0 ::
+    Résultat conforme au contrat API v1.0 (champs supplémentaires non-breaking) ::
 
         {
-            "global_score"  : int,    # 0-100
-            "risk_category" : str,    # 'FAIBLE' | 'MOYEN' | 'ÉLEVÉ'
-            "detail_json"   : {
-                "C1": float,          # contribution absolue = note_brute × poids
-                "C2": float,          # la somme des contributions ≈ global_score
+            "global_score"       : int,    # 0-100
+            "risk_category"      : str,    # 'FAIBLE' | 'MOYEN' | 'ÉLEVÉ'
+            "detail_json"        : {
+                "C1": float,               # contribution absolue = note_brute × poids
+                "C2": float,
                 "C3": float,
                 "C4": float,
                 "C5": float,
                 "C6": float,
-            }
+            },
+            # Champs étendus v1.3 — utilisés par le router pour les alertes fines
+            "c5_score"           : float,  # 0 | 50 | 100
+            "smurfing_detected"  : bool,
+            "card_testing_count" : int,    # nb de micro-tx carte détectées
         }
     """
 
@@ -110,6 +149,9 @@ class ScoringEngine:
         self.db = db_session
         self._weights: dict[str, float] = {}
         self._thresholds: list[dict[str, Any]] = []
+        # Flags internes réinitialisés à chaque appel de calculate_score [Fix 11]
+        self._smurfing_detected: bool = False
+        self._card_testing_count: int = 0
 
     # ──────────────────────────────────────────────────────────────────────
     # Point d'entrée public
@@ -120,10 +162,15 @@ class ScoringEngine:
         Calcule et retourne le score LBC/FT pour le client donné.
 
         :param customer_id: UUID du client (table customers).
-        :returns: dict avec global_score, risk_category, detail_json.
+        :returns: dict avec global_score, risk_category, detail_json, et
+                  champs étendus (c5_score, smurfing_detected, card_testing_count).
         :raises ValueError: si le client est introuvable en base.
         """
         logger.info("Début calcul score — client %s", customer_id)
+
+        # Réinitialisation des flags internes [Fix 11]
+        self._smurfing_detected = False
+        self._card_testing_count = 0
 
         self._load_weights()
         self._load_thresholds()
@@ -145,22 +192,30 @@ class ScoringEngine:
 
         # Contributions absolues : note_brute × poids → leur somme = global_score
         detail_json: dict[str, float] = {
-            code: round(notes[code] * self._weights.get(code, _DEFAULT_WEIGHTS[code]), 4)
+            code: round(
+                notes[code] * self._weights.get(code, _DEFAULT_WEIGHTS[code]), 4
+            )
             for code in ("C1", "C2", "C3", "C4", "C5", "C6")
         }
 
-        global_score  = min(100, max(0, round(sum(detail_json.values()))))
+        global_score = min(100, max(0, round(sum(detail_json.values()))))
         risk_category = self._get_category(global_score)
 
         logger.info(
             "Score calculé — client %s : %s (%s)",
-            customer_id, global_score, risk_category,
+            customer_id,
+            global_score,
+            risk_category,
         )
 
         return {
             "global_score": global_score,
             "risk_category": risk_category,
             "detail_json": detail_json,
+            # Champs étendus — non-breaking vis-à-vis du schéma API existant [Fix 11]
+            "c5_score": notes["C5"],
+            "smurfing_detected": self._smurfing_detected,
+            "card_testing_count": self._card_testing_count,
         }
 
     # ──────────────────────────────────────────────────────────────────────
@@ -176,10 +231,12 @@ class ScoringEngine:
         On normalise par la somme totale pour obtenir des fractions décimales
         robustes même si un critère est ajouté ou modifié en base.
         """
-        rows = self.db.query(ScoringCriteria).all()   # [Fix 1] : plus de filtre is_active
+        rows = self.db.query(
+            ScoringCriteria
+        ).all()  # [Fix 1] : plus de filtre is_active
 
         if rows:
-            raw   = {r.code: float(r.weight) for r in rows}
+            raw = {r.code: float(r.weight) for r in rows}
             total = sum(raw.values())
             if total > 0:
                 self._weights = {k: v / total for k, v in raw.items()}
@@ -199,7 +256,7 @@ class ScoringEngine:
         if rows:
             self._thresholds = [
                 {
-                    "category":  r.category,
+                    "category": r.category,
                     "min_score": r.score_min,
                     "max_score": r.score_max,
                 }
@@ -226,10 +283,12 @@ class ScoringEngine:
         risk = (customer.profession_risk or "").upper()
 
         note = {
-            "LOW":    10.0,
+            "LOW": 10.0,
             "MEDIUM": 35.0,
-            "HIGH":   65.0,
-        }.get(risk, 85.0)   # absent / non renseigné → activité non identifiable
+            "HIGH": 65.0,
+        }.get(
+            risk, 85.0
+        )  # absent / non renseigné → activité non identifiable
 
         # Incohérence revenus déclarés / niveau de risque
         rev = float(customer.revenus_declares or 0)
@@ -257,15 +316,15 @@ class ScoringEngine:
 
         risk_level en base (seed Marcos) : 'FAIBLE' | 'MOYEN' | 'ELEVE' | 'TRES_ELEVE'
         """
-        note = 50.0   # zone inconnue → prudence intermédiaire
+        note = 50.0  # zone inconnue → prudence intermédiaire
 
         zone = self._get_zone(customer)
         if zone:
             level = (zone.risk_level or "").upper()
             note = {
-                "FAIBLE":     10.0,
-                "MOYEN":      35.0,
-                "ELEVE":      65.0,
+                "FAIBLE": 10.0,
+                "MOYEN": 35.0,
+                "ELEVE": 65.0,
                 "TRES_ELEVE": 88.0,
             }.get(level, 50.0)
 
@@ -295,11 +354,19 @@ class ScoringEngine:
           21-50 → Quelques pics mais justifiables
           51-80 → Pics fréquents, retraits cash répétés, fréquence anormale
           81-100 → Smurfing, virements inexpliqués vers pays à risque
+
+        Détections couvertes (v1.3) :
+          a) Ratio montant total / revenus déclarés sur 3 mois
+          b) Fréquence anormale de transactions
+          c) Retraits cash répétés
+          d) Smurfing (montants ronds + near-threshold) [Fix 3, Fix 9]
+          e) Destinations vers pays à risque
+          f) Card testing — micro-tx carte répétées [Fix 8]
+          g) Transactions dupliquées / replay [Fix 10]
         """
-        # [Fix 6] _naive_utc_now() : Transaction.date_op est Column(DateTime) naïf —
-        # comparer avec un datetime aware provoque une DataError PostgreSQL.
-        cutoff      = _naive_utc_now() - timedelta(days=_TX_WINDOW_DAYS)
-        # [Fix 5] or [] pour éviter les AttributeError si accounts est None
+        # [Fix 6] cutoff naïf pour compatibilité PostgreSQL Column(DateTime) sans tz
+        cutoff = _naive_utc_now() - timedelta(days=_TX_WINDOW_DAYS)
+        # [Fix 5] or [] — sécurité si accounts est None
         account_ids = [acc.id for acc in (customer.accounts or [])]
 
         if not account_ids:
@@ -319,46 +386,101 @@ class ScoringEngine:
             logger.debug("C3=10 (aucune transaction sur 90j)")
             return 10.0
 
-        montants  = np.array([float(tx.montant) for tx in transactions])
-        types_op  = [tx.type_op or "" for tx in transactions]
+        montants = np.array([float(tx.montant) for tx in transactions])
+        types_op = [tx.type_op or "" for tx in transactions]
         pays_dest = [tx.destination_pays_id for tx in transactions]
-        rev       = float(customer.revenus_declares or 0)
+        rev = float(customer.revenus_declares or 0)
 
         note = 10.0
 
         # ── a) Ratio montant total / revenus déclarés sur 3 mois ──────────
         if rev > 0:
             ratio = float(np.sum(montants)) / (rev * 3)
-            if   ratio > 5:   note = max(note, 80.0)
-            elif ratio > 3:   note = max(note, 60.0)
-            elif ratio > 1.5: note = max(note, 40.0)
+            if ratio > 5:
+                note = max(note, 80.0)
+            elif ratio > 3:
+                note = max(note, 60.0)
+            elif ratio > 1.5:
+                note = max(note, 40.0)
 
         # ── b) Fréquence anormale ──────────────────────────────────────────
         tx_per_day = len(transactions) / _TX_WINDOW_DAYS
-        if   tx_per_day > 5: note = max(note, 70.0)
-        elif tx_per_day > 2: note = max(note, 45.0)
+        if tx_per_day > 5:
+            note = max(note, 70.0)
+        elif tx_per_day > 2:
+            note = max(note, 45.0)
 
         # ── c) Retraits cash répétés ───────────────────────────────────────
         retraits = sum(1 for t in types_op if "RETRAIT" in t.upper())
-        if   retraits > 10: note = max(note, 65.0)
-        elif retraits > 5:  note = max(note, 40.0)
+        if retraits > 10:
+            note = max(note, 65.0)
+        elif retraits > 5:
+            note = max(note, 40.0)
 
-        # ── d) Détection smurfing (anti faux-positifs) ────────────────────
-        # [Fix 3] : on passe les objets Transaction complets + les revenus
+        # ── d) Détection smurfing [Fix 3, Fix 9] ─────────────────────────
+        # On passe les objets Transaction complets + les revenus mensuels.
+        # _detect_smurfing positionne aussi self._smurfing_detected [Fix 11].
         if self._detect_smurfing(transactions, revenus_mensuel=rev):
             note = max(note, 85.0)
+            self._smurfing_detected = True  # [Fix 11] exposé dans le résultat
             logger.warning("⚠ Smurfing détecté — client %s", customer.id)
 
         # ── e) Destinations vers pays à risque ────────────────────────────
-        risk_ids    = self._get_risk_country_ids()
-        risky       = sum(1 for pid in pays_dest if pid in risk_ids)
+        risk_ids = self._get_risk_country_ids()
+        risky = sum(1 for pid in pays_dest if pid in risk_ids)
         if risky > 0:
             ratio_risky = risky / len(transactions)
-            if   ratio_risky > 0.5: note = max(note, 75.0)
-            elif ratio_risky > 0.2: note = max(note, 55.0)
+            if ratio_risky > 0.5:
+                note = max(note, 75.0)
+            elif ratio_risky > 0.2:
+                note = max(note, 55.0)
+
+        # ── f) Card testing — micro-transactions carte répétées [Fix 8] ───
+        # La validité technique de la carte est gérée par le service dédié.
+        # Ici on détecte le pattern comportemental : petits montants répétés
+        # sur carte pour valider une carte volée avant une fraude de grande ampleur.
+        card_micro_tx = [
+            tx
+            for tx in transactions
+            if (
+                tx.canal and "CARTE" in tx.canal.upper()
+                and 0 < float(tx.montant) <= _CARD_TESTING_MAX_AMOUNT
+            )
+        ]
+        self._card_testing_count = len(card_micro_tx)  # [Fix 11]
+        if len(card_micro_tx) >= _CARD_TESTING_ALERT_COUNT:
+            note = max(note, 75.0)
+            logger.warning(
+                "⚠ Card testing probable — client %s : %d micro-tx carte (≤%d XOF)",
+                customer.id,
+                len(card_micro_tx),
+                _CARD_TESTING_MAX_AMOUNT,
+            )
+        elif len(card_micro_tx) >= _CARD_TESTING_WARN_COUNT:
+            note = max(note, 45.0)
+            logger.debug(
+                "Card testing possible — client %s : %d micro-tx carte",
+                customer.id,
+                len(card_micro_tx),
+            )
+
+        # ── g) Transactions dupliquées / replay [Fix 10] ──────────────────
+        dupes = self._detect_duplicates(transactions)
+        if dupes >= 3:
+            note = max(note, 60.0)
+        elif dupes >= 1:
+            note = max(note, 40.0)
+        if dupes > 0:
+            logger.warning(
+                "⚠ %d groupe(s) de tx dupliquées détecté(s) — client %s",
+                dupes,
+                customer.id,
+            )
 
         logger.debug("C3=%.1f (%d tx analysées)", note, len(transactions))
         return round(min(100.0, note), 2)
+
+    # ── Smurfing ──────────────────────────────────────────────────────────
 
     def _detect_smurfing(
         self,
@@ -367,16 +489,17 @@ class ScoringEngine:
     ) -> bool:
         """
         Détecte le fractionnement (smurfing) avec trois garde-fous pour
-        éliminer les faux positifs.  [Fix 3]
+        éliminer les faux positifs.  [Fix 3, Fix 9]
+
+        Deux familles de transactions suspectes (logique OR) :
+          • Montant rond multiple de 10 000 XOF, < 500 000 XOF
+          • Near-threshold : entre 80 % et 100 % du seuil FATF [Fix 9]
+            (495 000, 498 000 XOF… — forme de fraude la plus courante au Bénin)
 
         Trois conditions CUMULATIVES pour déclencher :
-          1. Au moins _SMURFING_MIN_COUNT transactions avec un montant rond
-             (multiple de 10 000 XOF) inférieur au seuil FATF (500 000 XOF).
-          2. Ces transactions sont concentrées sur une courte période
-             (≤ _SMURFING_WINDOW_DAYS = 7 jours).
-          3. Le total de ces transactions suspects dépasse
-             _SMURFING_REVENUE_MULT × les revenus mensuels déclarés (ratio ≥ 3×).
-             → Cette condition est ignorée si revenus_mensuel = 0 (non renseigné).
+          1. Au moins _SMURFING_MIN_COUNT transactions suspectes.
+          2. Ces transactions concentrées sur ≤ _SMURFING_WINDOW_DAYS (7 j).
+          3. Total suspects ≥ _SMURFING_REVENUE_MULT × revenus mensuels (si renseignés).
 
         :param transactions: liste d'objets Transaction de la fenêtre 90j.
         :param revenus_mensuel: revenus déclarés en XOF (0 = non renseigné).
@@ -385,58 +508,105 @@ class ScoringEngine:
         if len(transactions) < _SMURFING_MIN_COUNT:
             return False
 
-        # ── Étape 1 : filtrer les transactions à montant rond sous le seuil ─
+        near_low = _SMURFING_THRESHOLD * _SMURFING_NEAR_LOW_PCT
+
+        # ── Étape 1 : filtrer les transactions suspectes (round OU near-threshold) ─
         suspects = [
-            tx for tx in transactions
-            if (
-                float(tx.montant) % _SMURFING_ROUND_STEP == 0
-                and float(tx.montant) < _SMURFING_THRESHOLD
-                and float(tx.montant) > 0
+            tx
+            for tx in transactions
+            if float(tx.montant) > 0
+            and (
+                # Montant rond classique
+                (
+                    float(tx.montant) % _SMURFING_ROUND_STEP == 0
+                    and float(tx.montant) < _SMURFING_THRESHOLD
+                )
+                or
+                # Near-threshold [Fix 9]
+                (near_low <= float(tx.montant) < _SMURFING_THRESHOLD)
             )
         ]
 
         if len(suspects) < _SMURFING_MIN_COUNT:
             return False
 
-        # ── Étape 2 : vérification de la concentration temporelle ───────────
-        dates = []
-        for tx in suspects:
-            d = tx.date_op
-            # Normaliser en datetime naive pour la comparaison (cohérence [Fix 6])
-            if d is not None and hasattr(d, "tzinfo") and d.tzinfo is not None:
-                d = d.replace(tzinfo=None)
-            if d is not None:
-                dates.append(d)
+        # ── Étape 2 : concentration temporelle ────────────────────────────
+        dates = [_strip_tz(tx.date_op) for tx in suspects]
+        dates = [d for d in dates if d is not None]
 
         if len(dates) < _SMURFING_MIN_COUNT:
             return False
 
-        date_min  = min(dates)
-        date_max  = max(dates)
+        date_min = min(dates)
+        date_max = max(dates)
         span_days = (date_max - date_min).days
 
         if span_days > _SMURFING_WINDOW_DAYS:
             logger.debug(
                 "Smurfing écarté : %d tx suspectes sur %d jours (> %d j)",
-                len(suspects), span_days, _SMURFING_WINDOW_DAYS,
+                len(suspects),
+                span_days,
+                _SMURFING_WINDOW_DAYS,
             )
             return False
 
-        # ── Étape 3 : ratio total suspects / revenus mensuels ───────────────
+        # ── Étape 3 : ratio total suspects / revenus mensuels ─────────────
         if revenus_mensuel > 0:
             total_suspects = sum(float(tx.montant) for tx in suspects)
             if total_suspects < revenus_mensuel * _SMURFING_REVENUE_MULT:
                 logger.debug(
                     "Smurfing écarté : total suspects=%.0f < %.0f (3× revenus)",
-                    total_suspects, revenus_mensuel * _SMURFING_REVENUE_MULT,
+                    total_suspects,
+                    revenus_mensuel * _SMURFING_REVENUE_MULT,
                 )
                 return False
 
         logger.debug(
-            "Smurfing confirmé : %d tx, span=%d j, montants ronds < %d XOF",
-            len(suspects), span_days, _SMURFING_THRESHOLD,
+            "Smurfing confirmé : %d tx, span=%d j",
+            len(suspects),
+            span_days,
         )
         return True
+
+    # ── Transactions dupliquées ───────────────────────────────────────────
+
+    def _detect_duplicates(self, transactions: list[Transaction]) -> int:
+        """
+        Détecte les groupes de transactions potentiellement dupliquées ou
+        rejouées (même montant arrondi + même destination dans une fenêtre 24 h).
+
+        Retourne le nombre de groupes suspects (0 = rien d'anormal).  [Fix 10]
+
+        Arrondi à la centaine (_DUPLICATE_ROUND_TO=-2) pour tolérer les petites
+        variations dues aux frais de service.
+        """
+        groups: dict[tuple, list[datetime]] = defaultdict(list)
+
+        for tx in transactions:
+            if tx.destination_pays_id is None:
+                continue
+            d = _strip_tz(tx.date_op)
+            if d is None:
+                continue
+            key = (
+                round(float(tx.montant), _DUPLICATE_ROUND_TO),
+                tx.destination_pays_id,
+                tx.compte_id,
+            )
+            groups[key].append(d)
+
+        duplicate_groups = 0
+        for dates in groups.values():
+            if len(dates) < 2:
+                continue
+            dates_sorted = sorted(dates)
+            for i in range(1, len(dates_sorted)):
+                delta = (dates_sorted[i] - dates_sorted[i - 1]).total_seconds()
+                if delta < _DUPLICATE_WINDOW_SECONDS:
+                    duplicate_groups += 1
+                    break  # un seul comptage par groupe
+
+        return duplicate_groups
 
     def _get_risk_country_ids(self) -> set[int]:
         """Retourne les IDs des pays frontaliers ou listés FATF."""
@@ -472,10 +642,14 @@ class ScoringEngine:
 
         delta = (date.today() - since).days
 
-        if   delta > 3 * 365: note = 10.0
-        elif delta > 365:     note = 35.0
-        elif delta > 180:     note = 60.0
-        else:                 note = 75.0
+        if delta > 3 * 365:
+            note = 10.0
+        elif delta > 365:
+            note = 35.0
+        elif delta > 180:
+            note = 60.0
+        else:
+            note = 75.0
 
         logger.debug("C4=%.1f (ancienneté=%d jours)", note, delta)
         return round(note, 2)
@@ -486,35 +660,60 @@ class ScoringEngine:
 
     def _score_c5(self, customer: Customer) -> float:
         """
-        Note brute C5 selon le statut de Personne Exposée Politiquement.
+        Note brute C5 — Statut de Personne Exposée Politiquement.  [Fix 7]
 
-        Grille CDC :
-          0   → Aucun lien avec une PEP
-          50  → Entourage proche d'une PEP (famille, associé)
-          100 → PEP avérée (fonctionnaire, élu, militaire de haut rang)
+        Grille révisée (alignée GAFI recommandation 12) :
+          100 → PEP active  (statut_pep=True OU trouvée dans pep_list avec active=True)
+           50 → Ancienne PEP (active=False — vigilance renforcée 5 ans post-mandat)
+            0 → Aucune correspondance PEP connue
+
+        Changement vs v1.2 :
+          Avant : requête filtrée sur active=True → ancienne PEP invisible → note 0
+          Après : pas de filtre active → ancienne PEP détectée → note 50  [Fix 7]
+
+        Note : la gestion des proches de PEP est hors scope (table pep_relationships
+        non présente dans le schéma actuel — roadmap V2).
         """
+        # 1. Flag dur positionné manuellement par le compliance officer
         if customer.statut_pep:
             logger.debug("C5=100 (statut_pep=True)")
             return 100.0
 
-        match = (
+        # 2. Recherche dans pep_list SANS filtre active — [Fix 7]
+        #    order_by active.desc() : si doublon de nom, la PEP active est retournée en tête.
+        match: PepEntry | None = (
             self.db.query(PepEntry)
             .filter(
                 PepEntry.nom.ilike(customer.nom),
                 PepEntry.prenom.ilike(customer.prenom),
-                PepEntry.active == True,  # noqa: E712
             )
+            .order_by(PepEntry.active.desc())
             .first()
         )
-        if match:
+
+        if not match:
+            logger.debug("C5=0 (aucune correspondance PEP)")
+            return 0.0
+
+        if match.active:
             logger.warning(
-                "⚠ Correspondance PEP trouvée — client %s : %s %s",
-                customer.id, customer.prenom, customer.nom,
+                "⚠ PEP ACTIVE — client %s : %s %s (fonction=%s)",
+                customer.id,
+                customer.prenom,
+                customer.nom,
+                match.fonction,
             )
             return 100.0
 
-        logger.debug("C5=0 (non PEP)")
-        return 0.0
+        # PEP inactive — vigilance résiduelle GAFI 5 ans
+        logger.warning(
+            "⚠ ANCIENNE PEP — client %s : %s %s (date_fin=%s, vigilance renforcée)",
+            customer.id,
+            customer.prenom,
+            customer.nom,
+            match.date_fin,
+        )
+        return 50.0
 
     # ──────────────────────────────────────────────────────────────────────
     # C6 — Cohérence KYC (poids 10 %)
@@ -529,6 +728,11 @@ class ScoringEngine:
           21-50 → Dossier partiellement incomplet, documents expirant bientôt
           51-80 → Incohérences significatives revenus/patrimoine
           81-100 → Dossier incomplet, documents invalides ou frauduleux
+
+        Note : kyc_completion est recalculé par compute_kyc_completion() à chaque
+        ajout/modification de document (customer_service + router customer_docs).
+        C6 fait confiance à cette valeur et concentre sa logique propre sur l'analyse
+        fine des documents (expiration, invalides) et la cohérence revenus/flux.
         """
         note = 10.0
         # [Fix 5] or [] — sécurité si la relation documents est None
@@ -537,26 +741,30 @@ class ScoringEngine:
         if not docs:
             note = max(note, 85.0)
         else:
-            today   = date.today()
+            today = date.today()
             bientot = today + timedelta(days=60)
 
             invalides = sum(
-                1 for d in docs
-                if not d.valide
-                or (d.date_expiration and d.date_expiration < today)
+                1
+                for d in docs
+                if not d.valide or (d.date_expiration and d.date_expiration < today)
             )
             expirant = sum(
-                1 for d in docs
+                1
+                for d in docs
                 if d.valide
                 and d.date_expiration
                 and today <= d.date_expiration < bientot
             )
-            total     = len(docs)
+            total = len(docs)
             ratio_inv = invalides / total
 
-            if   ratio_inv > 0.5: note = max(note, 85.0)
-            elif invalides > 0:   note = max(note, 55.0)
-            elif expirant  > 0:   note = max(note, 30.0)
+            if ratio_inv > 0.5:
+                note = max(note, 85.0)
+            elif invalides > 0:
+                note = max(note, 55.0)
+            elif expirant > 0:
+                note = max(note, 30.0)
 
         # Cohérence revenus déclarés vs flux transactionnels moyens
         rev = float(customer.revenus_declares or 0)
@@ -564,14 +772,19 @@ class ScoringEngine:
             avg_tx = self._avg_monthly_tx(customer)
             if avg_tx > 0:
                 ratio = avg_tx / rev
-                if   ratio > 10: note = max(note, 75.0)
-                elif ratio > 5:  note = max(note, 55.0)
-                elif ratio > 2:  note = max(note, 35.0)
+                if ratio > 10:
+                    note = max(note, 75.0)
+                elif ratio > 5:
+                    note = max(note, 55.0)
+                elif ratio > 2:
+                    note = max(note, 35.0)
 
-        # Taux de complétion KYC déclaré
+        # Taux de complétion KYC déclaré (mis à jour par customer_service)
         completion = customer.kyc_completion or 0
-        if   completion < 30: note = max(note, 80.0)
-        elif completion < 60: note = max(note, 40.0)
+        if completion < 30:
+            note = max(note, 80.0)
+        elif completion < 60:
+            note = max(note, 40.0)
 
         logger.debug("C6=%.1f (kyc_completion=%d%%)", note, completion)
         return round(min(100.0, note), 2)
@@ -616,20 +829,22 @@ class ScoringEngine:
           mais le contrat API v1.0 exige 'ÉLEVÉ' (avec accent). On normalise ici.
         """
         _NORMALIZE = {
-            "ELEVE":  "ÉLEVÉ",
-            "ÉLEVÉ":  "ÉLEVÉ",
-            "MOYEN":  "MOYEN",
+            "ELEVE": "ÉLEVÉ",
+            "ÉLEVÉ": "ÉLEVÉ",
+            "MOYEN": "MOYEN",
             "FAIBLE": "FAIBLE",
         }
 
         for t in sorted(self._thresholds, key=lambda x: x["min_score"]):
             if t["min_score"] <= score <= t["max_score"]:
                 raw = t["category"]
-                return _NORMALIZE.get(raw.upper(), raw)   # [Fix 2]
+                return _NORMALIZE.get(raw.upper(), raw)  # [Fix 2]
 
         # Fallback absolu si aucun seuil ne couvre le score
-        if   score <= 33: return "FAIBLE"
-        elif score <= 66: return "MOYEN"
+        if score <= 33:
+            return "FAIBLE"
+        elif score <= 66:
+            return "MOYEN"
         return "ÉLEVÉ"
 
     # ──────────────────────────────────────────────────────────────────────
@@ -641,7 +856,9 @@ class ScoringEngine:
         if customer.risk_zone:
             return customer.risk_zone
         if customer.zone_geo:
-            return self.db.query(RiskZone).filter(RiskZone.id == customer.zone_geo).first()
+            return (
+                self.db.query(RiskZone).filter(RiskZone.id == customer.zone_geo).first()
+            )
         return None
 
     def _get_country(self, customer: Customer) -> Country | None:

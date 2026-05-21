@@ -23,8 +23,8 @@ class Transaction(Base):
     destination = Column(Text, nullable=True)
 
     # FK pays — pour détection zones à risque (C3 scoring)
-    origine_pays_id = Column(Integer, ForeignKey("countries.id"), nullable=True)
-    destination_pays_id = Column(Integer, ForeignKey("countries.id"), nullable=True)
+    origine_pays_id = Column(Integer, ForeignKey("countries.id"), nullable=True, index=True)
+    destination_pays_id = Column(Integer, ForeignKey("countries.id"), nullable=True, index=True)
 
     # Relations
     account = relationship("CustomerAccount", back_populates="transactions")

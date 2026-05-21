@@ -165,7 +165,7 @@ export const TYPES_OP = ["DEPOT", "RETRAIT", "VIREMENT", "PAIEMENT"];
 // ── Sources PEP (PepEntry.source) ─────────────────────────────────────────
 export const PEP_SOURCES = ["CENTIF", "GIABA", "ONU", "FATF", "AUTRE"];
 
-// ── Pays référentiels (mock — utilisé si GET /api/referentials/countries absent) ──
+// ── Pays référentiels (mock — utilisé si GET /api/countries absent) ──
 // Synchronisé avec seed_db.py → seed_countries()
 export const MOCK_COUNTRIES = [
   {

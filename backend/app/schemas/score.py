@@ -155,15 +155,15 @@ class ScoreResponse(BaseModel):
         description="UUID du score enregistré en base",
     )
     customer_id: UUID = Field(
-        ...,
+        ..., alias="client_id",
         description="UUID du client scoré",
     )
     global_score: int = Field(
-        ..., ge=0, le=100,
+        ..., alias="score_global", ge=0, le=100,
         description="Score global de risque LBC/FT (0 = minimal, 100 = maximal)",
     )
     risk_category: str = Field(
-        ...,
+        ..., alias="categorie",
         description="Catégorie de risque normalisée : FAIBLE | MOYEN | ÉLEVÉ",
         examples=["FAIBLE", "MOYEN", "ÉLEVÉ"],
     )
@@ -176,26 +176,21 @@ class ScoreResponse(BaseModel):
         description="True si ce score est le score courant du client",
     )
     scored_by: str = Field(
-        default="AUTOMATED",
+        default="AUTOMATED", alias="calcule_par",
         description="Identifiant du déclencheur : 'AUTOMATED' ou UUID utilisateur",
     )
     scored_at: datetime = Field(
-        ...,
+        ..., alias="date_calcul",
         description="Date et heure du calcul (ISO 8601)",
     )
 
     # [Fix 2] — normalisation risk_category au niveau Pydantic
-    # Troisième ligne de défense : ScoringEngine → router → schéma
     @field_validator("risk_category", mode="before")
     @classmethod
     def normalize_risk_category(cls, value: str) -> str:
-        """
-        Normalise automatiquement la catégorie de risque.
-        Convertit 'ELEVE' (sans accent, base de données) en 'ÉLEVÉ' (contrat API).
-        """
         return _normalize_risk_category(value)
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "populate_by_name": True}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -211,25 +206,23 @@ class ScoreSummary(BaseModel):
     """
 
     id: UUID = Field(..., description="UUID du score")
-    global_score: int = Field(..., ge=0, le=100, description="Score global 0–100")
+    global_score: int = Field(..., alias="score_global", ge=0, le=100, description="Score global 0–100")
     risk_category: str = Field(
-        ...,
+        ..., alias="categorie",
         description="Catégorie de risque : FAIBLE | MOYEN | ÉLEVÉ",
     )
     is_current: bool = Field(
         ...,
         description="True si ce score est le score courant du client",
     )
-    scored_at: datetime = Field(..., description="Date et heure du calcul")
+    scored_at: datetime = Field(..., alias="date_calcul", description="Date et heure du calcul")
 
-    # [Rob-2] Même normalisation sur l'historique
     @field_validator("risk_category", mode="before")
     @classmethod
     def normalize_risk_category(cls, value: str) -> str:
-        """Normalise 'ELEVE' → 'ÉLEVÉ' pour la liste historique."""
         return _normalize_risk_category(value)
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "populate_by_name": True}
 
 
 # ─────────────────────────────────────────────────────────────────────────────

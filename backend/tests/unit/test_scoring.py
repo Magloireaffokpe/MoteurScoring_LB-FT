@@ -15,7 +15,7 @@ Prérequis :
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Generator
 
@@ -146,7 +146,7 @@ def _make_customer(
     prenom: str = "Client",
 ) -> Customer:
     if date_creation is None:
-        date_creation = datetime.utcnow() - timedelta(days=4 * 365)
+        date_creation = datetime.now(timezone.utc) - timedelta(days=4 * 365)
 
     customer = Customer(
         nom=nom,
@@ -190,7 +190,6 @@ def _make_doc(
     db: Session,
     customer: Customer,
     *,
-    valide: bool = True,
     expiration_delta_days: int = 365,
 ) -> CustomerDoc:
     doc = CustomerDoc(
@@ -198,7 +197,6 @@ def _make_doc(
         type_doc="CNI",
         numero=f"DOC-{uuid.uuid4().hex[:8].upper()}",
         date_expiration=date.today() + timedelta(days=expiration_delta_days),
-        valide=valide,
     )
     db.add(doc)
     db.flush()
@@ -219,7 +217,7 @@ def _make_transaction(
         montant=Decimal(str(montant)),
         devise="XOF",
         type_op=type_op,
-        date_op=datetime.utcnow() - timedelta(days=days_ago),
+        date_op=datetime.now(timezone.utc) - timedelta(days=days_ago),
         canal="GUICHET",
         destination_pays_id=pays_dest_id,
     )
@@ -245,10 +243,10 @@ class TestClientStandard:
             zone=zone,
             country=country,
             kyc_completion=95,
-            date_creation=datetime.utcnow() - timedelta(days=4 * 365),
+            date_creation=datetime.now(timezone.utc) - timedelta(days=4 * 365),
         )
         acc = _make_account(db, customer)
-        _make_doc(db, customer, valide=True, expiration_delta_days=500)
+        _make_doc(db, customer, expiration_delta_days=500)
 
         # Transactions régulières cohérentes avec revenus
         for i in range(6):
@@ -485,9 +483,9 @@ class TestSmurfing:
 class TestKYCIncomplet:
 
     def test_c6_eleve_doc_invalide(self, db: Session):
-        """Document invalide (valide=False) → C6 contribution élevée."""
+        """Document expiré → C6 contribution élevée."""
         customer = _make_customer(db, kyc_completion=40)
-        _make_doc(db, customer, valide=False)
+        _make_doc(db, customer, expiration_delta_days=-10)
 
         engine = ScoringEngine(db)
         result = engine.calculate_score(customer.id)
@@ -501,7 +499,7 @@ class TestKYCIncomplet:
     def test_c6_eleve_doc_expire(self, db: Session):
         """Document expiré (date_expiration passée) → C6 élevé."""
         customer = _make_customer(db, kyc_completion=50)
-        _make_doc(db, customer, valide=True, expiration_delta_days=-10)  # expiré
+        _make_doc(db, customer, expiration_delta_days=-10)  # expiré
 
         engine = ScoringEngine(db)
         result = engine.calculate_score(customer.id)
@@ -525,7 +523,7 @@ class TestKYCIncomplet:
         """Dossier complet, revenus cohérents, docs valides → C6 faible."""
         customer = _make_customer(db, kyc_completion=95, revenus=200_000)
         acc = _make_account(db, customer)
-        _make_doc(db, customer, valide=True, expiration_delta_days=700)
+        _make_doc(db, customer, expiration_delta_days=700)
 
         # Transactions cohérentes
         for i in range(3):
@@ -550,7 +548,7 @@ class TestAnciennete:
         """Client de plus de 3 ans → C4 note brute = 10 → contribution = 1.0."""
         customer = _make_customer(
             db,
-            date_creation=datetime.utcnow() - timedelta(days=4 * 365),
+            date_creation=datetime.now(timezone.utc) - timedelta(days=4 * 365),
             kyc_completion=80,
         )
         _make_doc(db, customer)
@@ -568,7 +566,7 @@ class TestAnciennete:
         """Client de moins de 6 mois → C4 élevé."""
         customer = _make_customer(
             db,
-            date_creation=datetime.utcnow() - timedelta(days=30),
+            date_creation=datetime.now(timezone.utc) - timedelta(days=30),
             kyc_completion=60,
         )
         _make_doc(db, customer)
@@ -586,7 +584,7 @@ class TestAnciennete:
         """Client entre 1 et 3 ans → C4 contribution intermédiaire."""
         customer = _make_customer(
             db,
-            date_creation=datetime.utcnow() - timedelta(days=2 * 365),
+            date_creation=datetime.now(timezone.utc) - timedelta(days=2 * 365),
             kyc_completion=70,
         )
         _make_doc(db, customer)

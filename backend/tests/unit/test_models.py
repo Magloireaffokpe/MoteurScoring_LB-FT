@@ -102,7 +102,6 @@ class TestCustomerDocModel:
             type_doc="CNI",
             numero="BJ123456",
             date_expiration=date(2030, 12, 31),
-            valide=True,
         )
         db.add(doc)
         db.commit()

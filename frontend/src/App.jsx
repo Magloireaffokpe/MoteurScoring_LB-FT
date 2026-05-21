@@ -77,7 +77,7 @@ export default function App() {
         <Route
           path="/clients/:id/edit"
           element={
-            <ProtectedRoute adminOnly>
+            <ProtectedRoute>
               <EditClientPage />
             </ProtectedRoute>
           }

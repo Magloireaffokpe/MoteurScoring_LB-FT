@@ -12,12 +12,13 @@ import {
   AlertTriangle,
   UserPlus,
 } from "lucide-react";
-
+import { Badge } from "../components/Badge";
 import { Layout } from "../components/Layout";
 import { Card } from "../components/Card";
 import { Button } from "../components/Button";
 import { Loader } from "../components/Loader";
 import { Table, Pagination } from "../components/Table";
+import { Modal, ModalFooter } from "../components/Modal";
 import { FormInput, FormSelect, FormTextarea } from "../components/FormInput";
 
 import { adminService } from "../services/adminService";
@@ -402,9 +403,7 @@ function PepSection() {
       const fd = new FormData();
       fd.append("file", file);
       const res = await adminService.importPep(fd);
-      toast.success(
-        `Import : ${res.imported} entrées, ${res.skipped || 0} ignorées`,
-      );
+      toast.success(res.message || "Import CSV PEP terminé");
       setFile(null);
       setPreview([]);
       if (fileRef.current) fileRef.current.value = "";
@@ -440,7 +439,6 @@ function PepSection() {
         source: form.source,
         date_debut: form.date_debut || null,
         date_fin: form.date_fin || null,
-        active: true,
       };
       await adminService.addPep(payload);
       toast.success(`PEP ajouté : ${form.prenom} ${form.nom}`);
@@ -543,7 +541,7 @@ function PepSection() {
         <p className="text-xs text-[#9CA3AF] mb-3">
           Format attendu :{" "}
           <span className="font-mono">
-            nom;prenom;fonction;pays_id;source;date_debut;date_fin
+            nom,prenom,fonction,pays_code,source,date_debut,date_fin
           </span>
         </p>
 
@@ -734,6 +732,34 @@ function PepSection() {
   );
 }
 
+const ACTION_DESCRIPTIONS = {
+  LOGIN: "Connexion à l'application",
+  LIST_CLIENTS: "Consultation de la liste des clients",
+  VIEW_CUSTOMER: "Consultation d'une fiche client",
+  CREATE_CUSTOMER: "Création d'un nouveau client",
+  UPDATE_CUSTOMER: "Modification d'une fiche client",
+  LIST_ALERTS: "Consultation de la liste des alertes",
+  VIEW_ALERT: "Consultation d'une alerte",
+  CREATE_ALERT: "Création manuelle d'une alerte",
+  UPDATE_ALERT: "Mise à jour d'une alerte",
+  SCORING_CALCULATE: "Calcul du score LBC/FT initial",
+  SCORING_RESCORE: "Recalcul manuel du score LBC/FT",
+  SCORING_RESCORE_ALL: "Rescoring global de tous les clients",
+  EXPORT_PDF: "Export PDF d'une fiche client",
+  EXPORT_CSV: "Export CSV des transactions",
+  IMPORT_PEP_LIST: "Import CSV de la liste PEP",
+  UPDATE_SCORING_CRITERIA: "Modification des poids de scoring",
+  CREATE_ACCOUNT: "Ajout d'un compte bancaire",
+  CREATE_TRANSACTION: "Ajout d'une transaction",
+  CREATE_DOCUMENT: "Ajout d'un document KYC",
+  UPDATE_RISK_THRESHOLD: "Modification des seuils de risque",
+  USER_ACTIVATED: "Activation d'un utilisateur",
+  USER_DEACTIVATED: "Désactivation d'un utilisateur",
+  CREATE_USER: "Création d'un compte agent",
+  USER_PASSWORD_RESET: "Réinitialisation du mot de passe",
+  ADD_PEP_MANUAL: "Ajout manuel d'une entrée PEP",
+};
+
 /* ─────────────────────────────────────────────────────────────────────
    Section 4 — Audit logs
 ───────────────────────────────────────────────────────────────────── */
@@ -742,6 +768,7 @@ function AuditSection() {
   const [actionFilter, setActionFilter] = useState("");
   const [userFilter, setUserFilter] = useState("");
   const [users, setUsers] = useState([]);
+  const [detailLog, setDetailLog] = useState(null);
 
   // Charger la liste des utilisateurs pour faire correspondre les identifiants
   useEffect(() => {
@@ -884,11 +911,91 @@ function AuditSection() {
           data={logs}
           loading={loading}
           emptyText="Aucun log disponible — les actions seront enregistrées ici."
+          onRowClick={(row) => setDetailLog(row)}
         />
         <div className="px-5 pb-3">
           <Pagination {...paginationProps(total)} />
         </div>
       </Card>
+
+      {/* Modal de détail d'un log d'audit */}
+      <Modal
+        open={!!detailLog}
+        onClose={() => setDetailLog(null)}
+        title="Détail de l'action"
+        size="md"
+      >
+        {detailLog && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wider mb-1">
+                  Action
+                </p>
+                <p className="font-mono text-sm font-bold text-[#1E3A8A]">
+                  {detailLog.action}
+                </p>
+                <p className="text-xs text-[#6B7280] mt-0.5">
+                  {ACTION_DESCRIPTIONS[detailLog.action] || "—"}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wider mb-1">
+                  Date & heure
+                </p>
+                <p className="text-sm font-medium">
+                  {formatDatetime(detailLog.timestamp)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wider mb-1">
+                  Utilisateur
+                </p>
+                <p className="text-sm font-medium">
+                  {(() => {
+                    const u = users.find(
+                      (usr) => String(usr.id) === String(detailLog.user_id),
+                    );
+                    return u
+                      ? `${u.login} (${u.role})`
+                      : detailLog.user_id;
+                  })()}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wider mb-1">
+                  Adresse IP
+                </p>
+                <p className="font-mono text-sm font-medium">
+                  {detailLog.ip_address || "Non capturée"}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wider mb-1">
+                  Client cible
+                </p>
+                <p className="font-mono text-xs text-[#374151] break-all">
+                  {detailLog.client_id || "Aucun"}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wider mb-1">
+                  ID du log
+                </p>
+                <p className="font-mono text-xs text-[#6B7280] break-all">
+                  {detailLog.id}
+                </p>
+              </div>
+            </div>
+
+            <ModalFooter>
+              <Button variant="ghost" onClick={() => setDetailLog(null)}>
+                Fermer
+              </Button>
+            </ModalFooter>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
@@ -901,6 +1008,8 @@ function AgentsSection() {
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [toggling, setToggling] = useState(null);
+  const [resetting, setResetting] = useState(null);
+  const [resetModal, setResetModal] = useState({ open: false, user: null, newPassword: "" });
 
   const [form, setForm] = useState({
     login: "",
@@ -936,6 +1045,34 @@ function AgentsSection() {
       toast.error(errMsg);
     } finally {
       setToggling(null);
+    }
+  };
+
+  const openResetModal = (user) => {
+    setResetModal({ open: true, user, newPassword: "" });
+  };
+
+  const closeResetModal = () => {
+    setResetModal({ open: false, user: null, newPassword: "" });
+  };
+
+  const handleResetPassword = async () => {
+    if (!resetModal.newPassword?.trim()) {
+      toast.error("Le nouveau mot de passe est requis");
+      return;
+    }
+
+    setResetting(resetModal.user.id);
+    try {
+      await adminService.resetUserPassword(resetModal.user.id, resetModal.newPassword.trim());
+      toast.success(`Mot de passe réinitialisé pour ${resetModal.user.login}`);
+      closeResetModal();
+      loadUsers();
+    } catch (err) {
+      const errMsg = err.response?.data?.detail || "Réinitialisation impossible";
+      toast.error(errMsg);
+    } finally {
+      setResetting(null);
     }
   };
 
@@ -994,14 +1131,24 @@ function AgentsSection() {
       key: "id",
       label: "Actions",
       render: (_, row) => (
-        <Button
-          size="sm"
-          variant={row.is_active ? "ghost" : "outline"}
-          loading={toggling === row.id}
-          onClick={() => handleToggleActive(row)}
-        >
-          {row.is_active ? "Désactiver" : "Activer"}
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button
+            size="sm"
+            variant={row.is_active ? "ghost" : "outline"}
+            loading={toggling === row.id}
+            onClick={() => handleToggleActive(row)}
+          >
+            {row.is_active ? "Désactiver" : "Activer"}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            loading={resetting === row.id}
+            onClick={() => openResetModal(row)}
+          >
+            Réinitialiser MDp
+          </Button>
+        </div>
       ),
     },
   ];
@@ -1050,9 +1197,48 @@ function AgentsSection() {
           emptyText="Aucun agent enregistré."
         />
       </Card>
+
+      {/* Modal réinitialisation mot de passe */}
+      {resetModal.open && resetModal.user && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <Card className="w-full max-w-md">
+            <div className="space-y-4">
+              <h2 className="text-lg font-bold">Réinitialiser le mot de passe</h2>
+              <p className="text-sm text-gray-600">
+                Utilisateur : <span className="font-semibold">{resetModal.user.login}</span>
+              </p>
+              <FormInput
+                label="Nouveau mot de passe"
+                type="password"
+                value={resetModal.newPassword}
+                onChange={(e) => setResetModal((m) => ({ ...m, newPassword: e.target.value }))}
+                placeholder="••••••••"
+                autoFocus
+              />
+              <div className="flex gap-3 justify-end">
+                <Button
+                  variant="ghost"
+                  onClick={closeResetModal}
+                  disabled={resetting === resetModal.user.id}
+                >
+                  Annuler
+                </Button>
+                <Button
+                  variant="outline"
+                  loading={resetting === resetModal.user.id}
+                  onClick={handleResetPassword}
+                >
+                  Confirmer
+                </Button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
+
 
 /* ─────────────────────────────────────────────────────────────────────
    AdminPage principale

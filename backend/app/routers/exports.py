@@ -25,7 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import require_compliance_or_admin
 from app.db.session import get_db
 from app.models.users import User
 from app.models.customers import Customer
@@ -39,37 +39,6 @@ from app.services.export_service import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Exports"])
-
-# ── Rôles autorisés ───────────────────────────────────────────────────────
-_ALLOWED_ROLES = {"admin", "compliance_officer"}
-
-
-def _check_role(user: User) -> None:
-    """
-    Vérifie que l'utilisateur possède un rôle autorisé pour les exports.
-
-    Le modèle User expose `role` comme une relation SQLAlchemy vers UserRole.
-    On lit donc `user.role.name` pour obtenir le nom du rôle.
-
-    :raises HTTPException 403: si le rôle est insuffisant.
-    """
-    # FIX: user.role est une relation vers l'objet UserRole (pas une string).
-    # user.role_id est la FK, user.role est l'objet chargé par SQLAlchemy.
-    role_name = ""
-    user_role = getattr(user, "role", None)
-    if user_role is not None:
-        if isinstance(user_role, str):
-            # Cas de compatibilité si jamais role est déjà une string
-            role_name = user_role
-        else:
-            # Cas normal : user.role est un objet UserRole → on lit .name
-            role_name = getattr(user_role, "name", "")
-
-    if role_name not in _ALLOWED_ROLES:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Rôle '{role_name}' insuffisant. Requis : compliance_officer ou admin.",
-        )
 
 
 def _today_str() -> str:
@@ -104,14 +73,13 @@ def _today_str() -> str:
 async def export_customer_pdf(
     customer_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_compliance_or_admin),
 ) -> StreamingResponse:
     """
     Exporte la fiche d'évaluation LBC/FT du client au format PDF.
 
     - **customer_id** : UUID du client à exporter.
     """
-    _check_role(current_user)
     customer = db.query(Customer).filter(Customer.id == customer_id).first()
     if not customer:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client introuvable")
@@ -191,7 +159,7 @@ async def export_transactions_csv(
         description="Fenêtre temporelle en jours (1–730, défaut 90)",
     ),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_compliance_or_admin),
 ) -> StreamingResponse:
     """
     Exporte les transactions du client au format CSV.
@@ -199,7 +167,6 @@ async def export_transactions_csv(
     - **customer_id** : UUID du client.
     - **days**        : nombre de jours à exporter (défaut 90, max 730).
     """
-    _check_role(current_user)
     customer = db.query(Customer).filter(Customer.id == customer_id).first()
     if not customer:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client introuvable")
@@ -274,14 +241,13 @@ async def export_transactions_csv(
 async def export_sar_pdf(
     alert_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_compliance_or_admin),
 ) -> StreamingResponse:
     """
     Génère la Déclaration de Soupçon (SAR) pour une alerte donnée.
 
     - **alert_id** : UUID de l'alerte LBC/FT déclenchant la déclaration.
     """
-    _check_role(current_user)
 
     try:
         pdf_bytes = generate_sar_pdf(

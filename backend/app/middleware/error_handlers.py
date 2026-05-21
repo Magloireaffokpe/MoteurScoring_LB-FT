@@ -1,4 +1,4 @@
-from fastapi import Request
+from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy.exc import SQLAlchemyError
@@ -55,7 +55,11 @@ async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError):
 async def generic_exception_handler(request: Request, exc: Exception):
     """
     Gère toutes les exceptions non catchées (500).
+    Laisse passer les HTTPException pour que FastAPI les traite normalement.
     """
+    if isinstance(exc, HTTPException):
+        raise exc
+
     logger.error(
         "Unhandled exception on %s %s: %s",
         request.method, request.url, str(exc),

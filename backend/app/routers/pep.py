@@ -13,13 +13,13 @@ router = APIRouter()
 @router.get("/pep")
 def list_pep(
     skip: int = Query(0, ge=0),
-    limit: int = Query(25, ge=1, le=100),
+    limit: int = Query(25, ge=1, le=1000),
     search: Optional[str] = None,
-    active: Optional[bool] = None,
+    active: Optional[bool] = Query(None),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
-    """Liste des PEP — filtrables par nom et statut (actif/inactif)."""
+    """Liste des PEP — filtrable par nom et par statut (actif/inactif/tous)."""
     query = db.query(PepEntry)
 
     if active is not None:

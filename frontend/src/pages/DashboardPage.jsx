@@ -1,6 +1,6 @@
 // src/pages/DashboardPage.jsx
-import { useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useCallback, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   Users,
   AlertTriangle,
@@ -41,7 +41,7 @@ import {
   formatAmount,
   normalizeCategory,
 } from "../utils/formatters";
-import { MOCK_DASHBOARD_STATS } from "../utils/constants";
+
 
 import toast from "react-hot-toast";
 import { clsx } from "clsx";
@@ -158,31 +158,58 @@ const ALERT_COLS = (navigate) => [
 /* ── Page principale ─────────────────────────────────────────────── */
 export default function DashboardPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [rescoring, setRescoring] = useState(false);
 
-  /* Chargement stats */
+  /* Chargement stats — se rafraîchit à chaque navigation */
   const {
     data: stats,
     loading: loadingStats,
-    refetch,
+    refetch: refetchStats,
   } = useFetch(
-    () => dashboardService.stats().catch(() => MOCK_DASHBOARD_STATS),
-    [],
+    () => dashboardService.stats(),
+    [location.key],
   );
 
   /* Chargement clients PEP */
-  const { data: pepData } = useFetch(
-    () => dashboardService.pepClients().catch(() => ({ items: [], total: 0 })),
-    [],
+  const { data: pepData, refetch: refetchPep } = useFetch(
+    () => dashboardService.pepClients(),
+    [location.key],
   );
   const pepCount = pepData?.total ?? 0;
 
   /* Chargement alertes récentes */
-  const { data: alertsData, loading: loadingAlerts } = useFetch(
-    () => dashboardService.recentAlerts().catch(() => ({ items: [] })),
-    [],
+  const { data: alertsData, loading: loadingAlerts, refetch: refetchAlerts } = useFetch(
+    () => dashboardService.recentAlerts(),
+    [location.key],
   );
   const recentAlerts = alertsData?.items || alertsData || [];
+
+  /* Rafraîchir toutes les données */
+  const refetchAll = useCallback(() => {
+    refetchStats();
+    refetchPep();
+    refetchAlerts();
+  }, [refetchStats, refetchPep, refetchAlerts]);
+
+  /* Rafraîchir au retour sur l'onglet / focus fenêtre */
+  useEffect(() => {
+    const onFocus = () => refetchAll();
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") onFocus();
+    });
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
+  }, [refetchAll]);
+
+  /* Rafraîchissement périodique toutes les 30s */
+  useEffect(() => {
+    const interval = setInterval(refetchAll, 30_000);
+    return () => clearInterval(interval);
+  }, [refetchAll]);
 
   /* Pie data */
   const pieData = stats
@@ -214,7 +241,7 @@ export default function DashboardPage() {
         `Rescoring global terminé : ${result.rescored} clients recalculés, dont ${result.critical} ont atteint le seuil critique.`,
         { id: toastId, duration: 6000 }
       );
-      refetch();
+      refetchAll();
     } catch (err) {
       toast.error("Échec du rescoring global", { id: toastId });
     } finally {

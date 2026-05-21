@@ -11,7 +11,7 @@ class Alert(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     client_id = Column(UUID(as_uuid=True), ForeignKey("customers.id", ondelete="CASCADE"), nullable=False, index=True)
-    clos_par = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    clos_par = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
 
     type_alerte = Column(String(50), nullable=False)   # 'SCORE_ELEVE', 'KYC_INCOMPLET', 'PEP_DETECTE'
     statut = Column(String(20), nullable=False, default="OPEN", server_default="OPEN",index=True)        # 'OPEN', 'UNDER_REVIEW', 'CLOSED'

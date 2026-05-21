@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Request
 from sqlalchemy.orm import Session
 from typing import Optional
 from uuid import UUID
+from datetime import date
 import csv
 import io
 
@@ -19,6 +20,12 @@ from app.auth.security import hash_password
 from pydantic import BaseModel as PydanticBase
 
 router = APIRouter()
+
+
+def _get_ip(request: Request) -> str | None:
+    if request.client:
+        return request.client.host
+    return None
 
 
 #  Scoring Criteria 
@@ -46,6 +53,7 @@ def get_scoring_criteria(
 def update_scoring_criteria(
     criteria_id: int,
     weight: float,
+    request: Request,
     db: Session = Depends(get_db),
     current_user=Depends(require_admin)
 ):
@@ -65,7 +73,7 @@ def update_scoring_criteria(
         .filter(ScoringCriteria.id != criteria_id).all()
     total = sum(float(c.weight) for c in other_weights) + weight
 
-    if round(total, 2) != 100.00:
+    if abs(total - 100.0) > 0.01:
         raise HTTPException(
             status_code=422,
             detail=f"Sum of weights must equal 100%. Current total would be {total}%"
@@ -75,7 +83,8 @@ def update_scoring_criteria(
     criteria.updated_by = current_user.id
     db.commit()
 
-    log_action(db, str(current_user.id), "UPDATE_SCORING_CRITERIA")
+    log_action(db, str(current_user.id), "UPDATE_SCORING_CRITERIA",
+               ip_address=_get_ip(request))
 
     return MessageResponse(message=f"Criteria {criteria.code} updated to {weight}%")
 
@@ -99,6 +108,43 @@ def get_risk_thresholds(
         }
         for t in items
     ]}
+
+
+class RiskThresholdUpdate(PydanticBase):
+    score_min: Optional[int] = None
+    score_max: Optional[int] = None
+    action: Optional[str] = None
+
+@router.put("/risk-thresholds/{threshold_id}", response_model=MessageResponse)
+def update_risk_threshold(
+    threshold_id: int,
+    data: RiskThresholdUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin)
+):
+    """Met à jour un seuil de risque."""
+    threshold = db.query(RiskThreshold).filter(RiskThreshold.id == threshold_id).first()
+    if not threshold:
+        raise HTTPException(status_code=404, detail="Threshold not found")
+
+    if data.score_min is not None and data.score_max is not None:
+        if data.score_min >= data.score_max:
+            raise HTTPException(
+                status_code=422,
+                detail="score_min must be less than score_max",
+            )
+    if data.score_min is not None:
+        threshold.score_min = data.score_min
+    if data.score_max is not None:
+        threshold.score_max = data.score_max
+    if data.action is not None:
+        threshold.action = data.action
+
+    db.commit()
+    log_action(db, str(current_user.id), "UPDATE_RISK_THRESHOLD",
+               ip_address=_get_ip(request))
+    return MessageResponse(message=f"Threshold {threshold.category} updated")
 
 
 #  Users 
@@ -125,6 +171,7 @@ def list_users(
 @router.put("/users/{user_id}/toggle-active", response_model=MessageResponse)
 def toggle_user_active(
     user_id: UUID,
+    request: Request,
     db: Session = Depends(get_db),
     current_user=Depends(require_admin)
 ):
@@ -140,7 +187,8 @@ def toggle_user_active(
     db.commit()
 
     status = "activated" if user.is_active else "deactivated"
-    log_action(db, str(current_user.id), f"USER_{status.upper()}")
+    log_action(db, str(current_user.id), f"USER_{status.upper()}",
+               ip_address=_get_ip(request))
 
     return MessageResponse(message=f"User {user.login} {status}")
 
@@ -150,13 +198,11 @@ def toggle_user_active(
 @router.post("/pep-list/import", response_model=MessageResponse)
 async def import_pep_list(
     file: UploadFile = File(...),
+    request: Request = None,
     db: Session = Depends(get_db),
     current_user=Depends(require_admin)
 ):
-    """
-    Import CSV de la liste PEP.
-    Format attendu : nom,prenom,fonction,pays_code,date_debut,date_fin,source
-    """
+    """Import CSV de la liste PEP."""
     if not file.filename.endswith(".csv"):
         raise HTTPException(status_code=422, detail="File must be a CSV")
 
@@ -187,22 +233,79 @@ async def import_pep_list(
             if country:
                 pays_id = country.id
 
+        # Parse dates from CSV
+        date_debut = None
+        date_fin = None
+        if row.get("date_debut"):
+            try:
+                date_debut = date.fromisoformat(row["date_debut"].strip())
+            except ValueError:
+                pass
+        if row.get("date_fin"):
+            try:
+                date_fin = date.fromisoformat(row["date_fin"].strip())
+            except ValueError:
+                pass
+
         entry = PepEntry(
             nom=row.get("nom", "").strip(),
             prenom=row.get("prenom", "").strip(),
             fonction=row.get("fonction", "").strip() or None,
             pays=pays_id,
             source=row.get("source", "").strip() or None,
+            date_debut=date_debut,
+            date_fin=date_fin,
         )
         db.add(entry)
         imported += 1
 
     db.commit()
-    log_action(db, str(current_user.id), "IMPORT_PEP_LIST")
+    log_action(db, str(current_user.id), "IMPORT_PEP_LIST",
+               ip_address=_get_ip(request))
 
     return MessageResponse(
         message=f"Import completed: {imported} inserted, {skipped} skipped"
     )
+
+class PepCreate(PydanticBase):
+    nom: str
+    prenom: str
+    fonction: Optional[str] = None
+    pays: Optional[int] = None
+    source: Optional[str] = None
+    date_debut: Optional[date] = None
+    date_fin: Optional[date] = None
+
+@router.post("/pep-list", response_model=MessageResponse)
+def add_pep_entry(
+    data: PepCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin)
+):
+    """Ajoute manuellement une personne PEP."""
+    existing = db.query(PepEntry).filter(
+        PepEntry.nom == data.nom.strip(),
+        PepEntry.prenom == data.prenom.strip()
+    ).first()
+
+    if existing:
+        raise HTTPException(status_code=422, detail="PEP entry already exists")
+
+    entry = PepEntry(
+        nom=data.nom.strip(),
+        prenom=data.prenom.strip(),
+        fonction=data.fonction.strip() if data.fonction else None,
+        pays=data.pays,
+        source=data.source.strip() if data.source else "Manuel",
+        date_debut=data.date_debut,
+        date_fin=data.date_fin,
+    )
+    db.add(entry)
+    db.commit()
+    log_action(db, str(current_user.id), "ADD_PEP_MANUAL",
+               ip_address=_get_ip(request))
+    return MessageResponse(message=f"PEP {data.prenom} {data.nom} added manually")
 
 
 #  Audit Logs 
@@ -253,6 +356,7 @@ class UserCreate(PydanticBase):
 @router.post("/users", status_code=201)
 def create_user(
     data: UserCreate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user=Depends(require_admin)
 ):
@@ -278,7 +382,8 @@ def create_user(
     db.commit()
     db.refresh(user)
 
-    log_action(db, str(current_user.id), "CREATE_USER")
+    log_action(db, str(current_user.id), "CREATE_USER",
+               ip_address=_get_ip(request))
 
     return {
         "id": str(user.id),
@@ -286,3 +391,27 @@ def create_user(
         "role": role.name,
         "is_active": user.is_active,
     }
+
+
+class PasswordReset(PydanticBase):
+    new_password: str
+
+@router.put("/users/{user_id}/reset-password", response_model=MessageResponse)
+def reset_user_password(
+    user_id: UUID,
+    data: PasswordReset,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin)
+):
+    """Réinitialise le mot de passe d'un utilisateur."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.password_hash = hash_password(data.new_password)
+    db.commit()
+
+    log_action(db, str(current_user.id), "USER_PASSWORD_RESET",
+               ip_address=_get_ip(request))
+    return MessageResponse(message=f"Password for user {user.login} has been reset")

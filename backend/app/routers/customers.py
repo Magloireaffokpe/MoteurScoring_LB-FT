@@ -3,27 +3,29 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_
 from typing import Optional
 from uuid import UUID
+import logging
 
 from app.db.session import get_db
-from app.auth.dependencies import get_current_user, require_admin
+from app.auth.dependencies import get_current_user, require_admin, require_compliance_or_admin
 from app.models.customers import Customer
-from app.models.risk_zones import RiskZone
 from app.schemas.customer import (
     CustomerCreate, CustomerUpdate,
     CustomerSummary, CustomerDetail
 )
 from app.schemas.common import PaginatedResponse
 from app.services.audit_service import log_action
-from app.services.customer_service import compute_kyc_completion,determine_kyc_level
+from app.services.customer_service import compute_kyc_completion, determine_kyc_level
+from app.services.alert_service import create_kyc_alert_if_needed
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/clients", response_model=PaginatedResponse[CustomerSummary])
 def list_clients(
     skip: int = Query(0, ge=0),
-    limit: int = Query(25, ge=1, le=100),
+    limit: int = Query(25, ge=1, le=1000),
     search: Optional[str] = None,
     status: Optional[str] = None,
     kyc_level: Optional[str] = None,
@@ -99,7 +101,7 @@ def get_client(
 def create_client(
     data: CustomerCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(require_admin)
+    current_user=Depends(require_compliance_or_admin)
 ):
     """
     Crée un nouveau client.
@@ -128,6 +130,8 @@ def create_client(
     db.commit()
     db.refresh(customer)
 
+    create_kyc_alert_if_needed(db, customer.id, completion)
+
     # Déclenche le scoring initial (module de Magloire)
     try:
         from app.services.scoring import ScoringEngine
@@ -135,7 +139,7 @@ def create_client(
         engine.calculate_score(str(customer.id), scored_by="AUTOMATED")
     except Exception as e:
         # Log l'erreur mais ne bloque pas la création
-        print(f"[WARNING] Scoring error for {customer.id}: {e}")
+        logger.warning("Scoring error for %s: %s", customer.id, e)
 
     log_action(db, str(current_user.id), "CREATE_CUSTOMER", client_id=str(customer.id))
 
@@ -147,14 +151,34 @@ def update_client(
     customer_id: UUID,
     data: CustomerUpdate,
     db: Session = Depends(get_db),
-    current_user=Depends(require_admin)
+    current_user=Depends(require_compliance_or_admin)
 ):
     """Met à jour les informations d'un client."""
     customer = db.query(Customer).filter(Customer.id == customer_id).first()
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
 
-    for field, value in data.model_dump(exclude_unset=True).items():
+    fields = data.model_dump(exclude_unset=True)
+
+    # Vérification unicité email
+    if "email" in fields and fields["email"]:
+        existing = db.query(Customer).filter(
+            Customer.email == fields["email"],
+            Customer.id != customer_id
+        ).first()
+        if existing:
+            raise HTTPException(status_code=409, detail="Un autre client utilise déjà cet email")
+
+    # Vérification unicité téléphone
+    if "phone" in fields and fields["phone"]:
+        existing = db.query(Customer).filter(
+            Customer.phone == fields["phone"],
+            Customer.id != customer_id
+        ).first()
+        if existing:
+            raise HTTPException(status_code=409, detail="Un autre client utilise déjà ce numéro de téléphone")
+
+    for field, value in fields.items():
         setattr(customer, field, value)
 
     # Recalcule le % KYC si documents modifiés
@@ -164,6 +188,8 @@ def update_client(
 
     db.commit()
     db.refresh(customer)
+
+    create_kyc_alert_if_needed(db, customer.id, completion)
 
     log_action(db, str(current_user.id), "UPDATE_CUSTOMER", client_id=str(customer_id))
 

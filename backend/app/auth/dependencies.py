@@ -1,20 +1,26 @@
 #Dépendances FastAPI pour récupérer l'utilisateur courant depuis le token.
 
-from fastapi import Depends, HTTPException
+from typing import Optional
+from fastapi import Depends, HTTPException, Cookie
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from app.auth.security import decode_token
 from app.db.session import get_db
 from app.models.users import User
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 
 def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    token: Optional[str] = Depends(oauth2_scheme),
+    access_token: Optional[str] = Cookie(None),
     db: Session = Depends(get_db)
 ) -> User:
-    payload = decode_token(token)
+    actual_token = access_token or token
+    if not actual_token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    payload = decode_token(actual_token)
     if not payload:
         raise HTTPException(status_code=401, detail="Not authenticated")
 

@@ -41,7 +41,7 @@ export const adminService = {
   /**
    * POST /api/admin/pep-list/import
    * Body : FormData avec fichier CSV
-   * Retourne : { imported: number, skipped: number, message: string }
+   * Retourne : { message: string }
    */
   importPep: (formData) =>
     api
@@ -52,10 +52,8 @@ export const adminService = {
 
   /**
    * POST /api/admin/pep-list
-   * Body aligné avec PepEntry (pep_list.py) :
-   *   { nom, prenom, fonction, pays (int FK → countries.id),
-   *     source, date_debut, date_fin, active }
-   * NB : route non listée dans api_routes_backend.md — à confirmer avec Marcos
+   * Body aligné avec le routeur backend :
+   *   { nom, prenom, fonction, pays, source, date_debut, date_fin }
    */
   addPep: (body) => api.post("/api/admin/pep-list", body).then((r) => r.data),
 
@@ -68,12 +66,20 @@ export const adminService = {
 
   /**
    * POST /api/admin/users
-   * Body : { login, password, role_id }
-   * Champs alignés avec User (users.py) :
-   *   role_id : Integer FK → user_roles.id  (pas role: string)
-   *   password_hash côté backend  (le routeur hache le password reçu)
+   * Body : { login, password, role_name }
+   * Champs alignés avec le routeur backend :
+   *   role_name doit être 'admin' ou 'compliance_officer'
    */
   createUser: (body) => api.post("/api/admin/users", body).then((r) => r.data),
+
+  /**
+   * PUT /api/admin/users/{user_id}/reset-password
+   * Body : { new_password: string }
+   */
+  resetUserPassword: (id, newPassword) =>
+    api
+      .put(`/api/admin/users/${id}/reset-password`, { new_password: newPassword })
+      .then((r) => r.data),
 
   /**
    * PUT /api/admin/users/{user_id}/toggle-active
@@ -91,4 +97,21 @@ export const adminService = {
    */
   getAuditLogs: (params) =>
     api.get("/api/admin/audit-logs", { params }).then((r) => r.data),
+
+  // ── Référentiels (Pays & Zones) ───────────────────────────────────────────
+  /**
+   * POST /api/countries
+   * Body : { code_iso, name, is_uemoa?, is_border?, is_fatf? }
+   * Champs alignés avec Country (countries.py)
+   */
+  createCountry: (body) =>
+    api.post("/api/countries", body).then((r) => r.data),
+
+  /**
+   * POST /api/risk-zones
+   * Body : { name, risk_level, description? }
+   * Champs alignés avec RiskZone (risk_zones.py)
+   */
+  createRiskZone: (body) =>
+    api.post("/api/risk-zones", body).then((r) => r.data),
 };

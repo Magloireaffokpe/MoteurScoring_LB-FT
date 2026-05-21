@@ -152,7 +152,7 @@ function NotificationBell() {
     if (!alertService || typeof alertService.list !== "function") {
       return;
     }
-    const promise = alertService.list({ limit: 50, statut: "OPEN" });
+    const promise = alertService.list({ limit: 50, statut: "OPEN" }, { silent: true });
     if (!promise || typeof promise.then !== "function") {
       return;
     }

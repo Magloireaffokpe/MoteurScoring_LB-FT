@@ -9,6 +9,7 @@ from app.models.customers import Customer
 from app.models.alerts import Alert
 from app.models.transactions import Transaction
 from app.models.scores import Score
+from app.models.pep_list import PepEntry
 
 
 router = APIRouter()
@@ -92,21 +93,21 @@ def get_pep_clients(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
-    """Clients actuellement marqués PEP."""
-    clients = db.query(Customer)\
-        .filter(Customer.statut_pep).all()
+    """Entrées PEP actives dans le référentiel."""
+    entries = db.query(PepEntry)\
+        .filter(PepEntry.active == True)\
+        .order_by(PepEntry.nom).all()
 
     return {
         "items": [
             {
-                "id": str(c.id),
-                "nom": c.nom,
-                "prenom": c.prenom,
-                "statut_pep": c.statut_pep,
-                "kyc_level": c.kyc_level,
-                "status": c.status,
+                "id": str(e.id),
+                "nom": e.nom,
+                "prenom": e.prenom,
+                "fonction": e.fonction,
+                "pays": e.pays,
             }
-            for c in clients
+            for e in entries
         ],
-        "total": len(clients)
+        "total": len(entries)
     }

@@ -1,15 +1,27 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import model_validator
+
 
 class Settings(BaseSettings):
-    # URL pour la connexion depuis l'hôte (votre machine → Docker)
-    DATABASE_URL: str = "postgresql://marcos:dev_password_change_in_prod@localhost:5433/scoring_db"
-    SECRET_KEY: str = "dev_secret_key_change_in_production"
-    DEBUG: bool = True
+    DATABASE_URL: str
+    SECRET_KEY: str
+    DEBUG: bool = False
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+
+    @model_validator(mode="after")
+    def _fail_fast_on_missing_secrets(self):
+        if not self.DATABASE_URL:
+            raise ValueError("DATABASE_URL is required — check .env file")
+        if self.SECRET_KEY in ("", "dev_secret_key_change_in_production", "change_me_generate_a_random_key"):
+            raise ValueError(
+                "SECRET_KEY is weak or missing — generate a strong key with: openssl rand -hex 32"
+            )
+        if self.DEBUG and "localhost" not in self.DATABASE_URL and "127.0.0.1" not in self.DATABASE_URL:
+            raise ValueError("DEBUG=true is not allowed with a remote database")
+        return self
+
 
 settings = Settings()

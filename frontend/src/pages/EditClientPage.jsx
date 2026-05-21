@@ -118,8 +118,6 @@ export default function EditClientPage() {
 
   const validate = () => {
     const errs = {};
-    if (!formData.prenom.trim()) errs.prenom = "Le prénom est requis";
-    if (!formData.nom.trim()) errs.nom = "Le nom de famille est requis";
     if (!formData.profession_code) errs.profession_code = "La profession est requise";
     if (!formData.pays) errs.pays = "Le pays est requis";
 
@@ -138,9 +136,6 @@ export default function EditClientPage() {
     const toastId = toast.loading("Mise à jour du client...");
     try {
       const payload = {
-        nom: formData.nom.trim(),
-        prenom: formData.prenom.trim(),
-        date_naissance: formData.date_naissance || null,
         phone: formData.phone || null,
         email: formData.email || null,
         profession_code: formData.profession_code || null,
@@ -218,31 +213,36 @@ export default function EditClientPage() {
             <div className="space-y-5">
               <Card title="Informations Personnelles">
                 <div className="space-y-4">
-                  <FormInput
-                    label="Prénom"
-                    required
-                    name="prenom"
-                    value={formData.prenom}
-                    error={errors.prenom}
-                    onChange={(e) => patch({ prenom: e.target.value })}
-                    placeholder="ex : Koffi"
-                  />
-                  <FormInput
-                    label="Nom de famille"
-                    required
-                    name="nom"
-                    value={formData.nom}
-                    error={errors.nom}
-                    onChange={(e) => patch({ nom: e.target.value.toUpperCase() })}
-                    placeholder="ex : BIAOU"
-                  />
-                  <FormInput
-                    label="Date de naissance"
-                    type="date"
-                    name="date_naissance"
-                    value={formData.date_naissance}
-                    onChange={(e) => patch({ date_naissance: e.target.value })}
-                  />
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-[#6B7280] tracking-wide uppercase">
+                      Prénom
+                    </label>
+                    <p className="text-sm text-[#111827] px-4 py-2.5 bg-[#F9FAFB] rounded-xl border border-[#E5E7EB]">
+                      {formData.prenom || "—"}
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-[#6B7280] tracking-wide uppercase">
+                      Nom de famille
+                    </label>
+                    <p className="text-sm text-[#111827] px-4 py-2.5 bg-[#F9FAFB] rounded-xl border border-[#E5E7EB]">
+                      {formData.nom || "—"}
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-[#6B7280] tracking-wide uppercase">
+                      Date de naissance
+                    </label>
+                    <p className="text-sm text-[#111827] px-4 py-2.5 bg-[#F9FAFB] rounded-xl border border-[#E5E7EB]">
+                      {formData.date_naissance
+                        ? new Date(formData.date_naissance).toLocaleDateString("fr-FR", {
+                            year: "numeric",
+                            month: "long",
+                            day: "numeric",
+                          })
+                        : "—"}
+                    </p>
+                  </div>
                   <FormInput
                     label="Téléphone"
                     name="phone"
@@ -301,7 +301,7 @@ export default function EditClientPage() {
                     min="0"
                     step="1000"
                     onChange={(e) => patch({ revenus_declares: e.target.value })}
-                    placeholder="250000"
+                    placeholder="Revenu mensuel déclaré en XOF"
                   />
                 </div>
               </Card>

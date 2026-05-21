@@ -293,7 +293,7 @@ class TestTransactionsEndpoints:
                 "devise": "XOF"
             }
         )
-        assert response.status_code == 200, response.text
+        assert response.status_code in (200, 201), response.text
         data = response.json()
         assert data["montant"] == 500.0
         assert data["type_op"] == "DEPOT"

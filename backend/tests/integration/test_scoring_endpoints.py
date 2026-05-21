@@ -30,7 +30,7 @@ Corrections appliquées (alignement models) :
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Generator
 
@@ -208,7 +208,7 @@ def _create_low_risk_customer(db: Session) -> Customer:
         kyc_completion=90,
         status="ACTIVE",
         kyc_level="LOW",
-        date_creation=datetime.utcnow() - timedelta(days=4 * 365),
+        date_creation=datetime.now(timezone.utc) - timedelta(days=4 * 365),
     )
     customer.risk_zone = zone
     customer.country = country
@@ -220,7 +220,6 @@ def _create_low_risk_customer(db: Session) -> Customer:
         type_doc="CNI",
         numero=f"CNI-{uuid.uuid4().hex[:8].upper()}",
         date_expiration=date.today() + timedelta(days=600),
-        valide=True,
     )
     db.add(doc)
 
@@ -270,7 +269,7 @@ def _create_high_risk_customer(db: Session) -> Customer:
         kyc_completion=15,
         status="ACTIVE",
         kyc_level="HIGH",
-        date_creation=datetime.utcnow() - timedelta(days=15),
+        date_creation=datetime.now(timezone.utc) - timedelta(days=15),
     )
     customer.risk_zone = zone
     customer.country = country
@@ -295,7 +294,7 @@ def _create_high_risk_customer(db: Session) -> Customer:
             montant=Decimal("450000"),
             devise="XOF",
             type_op="VIREMENT",
-            date_op=datetime.utcnow() - timedelta(days=i + 1),
+            date_op=datetime.now(timezone.utc) - timedelta(days=i + 1),
             canal="INTERNET",
             destination_pays_id=country.id,
         )

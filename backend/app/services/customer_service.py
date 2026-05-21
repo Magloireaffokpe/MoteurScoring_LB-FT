@@ -1,5 +1,4 @@
 from app.models.customers import Customer
-from datetime import date
 
 
 def compute_kyc_completion(customer: Customer) -> int:
@@ -9,8 +8,6 @@ def compute_kyc_completion(customer: Customer) -> int:
     Retourne un entier entre 0 et 100.
     """
     fields = [
-        customer.nom,
-        customer.prenom,
         customer.date_naissance,
         customer.phone,
         customer.email,

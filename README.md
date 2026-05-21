@@ -6,7 +6,7 @@ Système de scoring automatisé pour la lutte contre le blanchiment de capitaux 
 - Backend : Python 3.11 + FastAPI + PostgreSQL
 - Frontend : React 18 + Vite + Tailwind CSS
 - Base de données : 14 tables PostgreSQL + Alembic migrations
-- Déploiement : Docker + Docker Compose
+- Déploiement : Render (backend) + Neon (DB) + Vercel (frontend)
 
 **Binôme :** AFFOKPE Magloire (Dev A) & BATAMOUSSI Marcos (Dev B)  
 **Encadrant :** Mr ASSOGBA Emery  

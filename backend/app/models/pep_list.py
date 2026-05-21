@@ -23,3 +23,20 @@ class PepEntry(Base):
 
     def __repr__(self):
         return f"<PepEntry {self.prenom} {self.nom} — {self.fonction}>"
+
+
+from sqlalchemy import event
+from datetime import date
+
+@event.listens_for(PepEntry, "before_insert")
+@event.listens_for(PepEntry, "before_update")
+def compute_active_pep(mapper, connection, target):
+    """Calcul automatique du statut active de la PEP."""
+    if target.date_fin is not None or target.date_debut is not None:
+        today = date.today()
+        is_active = True
+        if target.date_fin and target.date_fin < today:
+            is_active = False
+        if target.date_debut and target.date_debut > today:
+            is_active = False
+        target.active = is_active

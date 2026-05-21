@@ -214,7 +214,6 @@ def _create_full_customer(db: Session) -> tuple[Customer, CustomerAccount, Score
         type_doc="CNI",
         numero="CNI-TEST-001",
         date_expiration=date.today() + timedelta(days=500),
-        valide=True,
     )
     db.add(doc)
 

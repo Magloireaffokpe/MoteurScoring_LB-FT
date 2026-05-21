@@ -136,7 +136,7 @@ function Step1({ data, errors, patch }) {
         error={errors.prenom}
         onChange={(e) => patch({ prenom: e.target.value })}
         placeholder="ex : Koffi"
-        helper="Customer.prenom — String(100) not null"
+        helper="Requis"
       />
       <FormInput
         label="Nom de famille"
@@ -146,7 +146,7 @@ function Step1({ data, errors, patch }) {
         error={errors.nom}
         onChange={(e) => patch({ nom: e.target.value.toUpperCase() })}
         placeholder="ex : BIAOU"
-        helper="Customer.nom — String(100) not null"
+        helper="Requis"
       />
       <FormInput
         label="Date de naissance"
@@ -154,7 +154,7 @@ function Step1({ data, errors, patch }) {
         name="date_naissance"
         value={data.date_naissance}
         onChange={(e) => patch({ date_naissance: e.target.value })}
-        helper="Customer.date_naissance — Date nullable"
+        helper="Optionnel"
       />
       <FormInput
         label="Téléphone"
@@ -163,7 +163,7 @@ function Step1({ data, errors, patch }) {
         error={errors.phone}
         onChange={(e) => patch({ phone: e.target.value })}
         placeholder="+22966123456"
-        helper="Customer.phone — unique, String(20) nullable"
+        helper="Optionnel"
       />
       <FormInput
         label="Adresse email"
@@ -174,20 +174,20 @@ function Step1({ data, errors, patch }) {
         onChange={(e) => patch({ email: e.target.value })}
         placeholder="koffi@example.bj"
         className="sm:col-span-2"
-        helper="Customer.email — unique, String(150) nullable"
+        helper="Optionnel"
       />
 
       {/* Profession */}
-      <FormSelect
-        label="Profession / Secteur d'activité"
-        required
-        name="profession_code"
-        value={data.profession_code}
-        error={errors.profession_code}
-        onChange={(e) => handleProfessionChange(e.target.value)}
-        className="sm:col-span-2"
-        helper="Customer.profession_code — String(50) nullable"
-      >
+        <FormSelect
+          label="Profession / Secteur d'activité"
+          required
+          name="profession_code"
+          value={data.profession_code}
+          error={errors.profession_code}
+          onChange={(e) => handleProfessionChange(e.target.value)}
+          className="sm:col-span-2"
+          helper="Requis"
+        >
         <option value="">— Sélectionner une profession —</option>
         {PROFESSIONS.map((p) => (
           <option key={p.code} value={p.code}>
@@ -220,9 +220,9 @@ function Step1({ data, errors, patch }) {
         min="0"
         step="1000"
         onChange={(e) => patch({ revenus_declares: e.target.value })}
-        placeholder="250000"
+        placeholder="Revenu mensuel déclaré en XOF"
         className="sm:col-span-2"
-        helper="Customer.revenus_declares — Numeric(15,2) nullable"
+        helper="Optionnel"
       />
     </div>
   );
@@ -240,43 +240,82 @@ function Step2({ data, errors, patch, countries, zones }) {
   const selectedZone = zones.find(
     (z) => String(z.id) === String(data.zone_geo),
   );
+  const selectedCountry = countries.find(
+    (c) => String(c.id) === String(data.pays),
+  );
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       {/* Pays — FK countries.id */}
-      <FormSelect
-        label="Pays / Nationalité"
-        required
-        name="pays"
-        value={data.pays}
-        error={errors.pays}
-        onChange={(e) => patch({ pays: e.target.value })}
-        helper="Customer.pays — FK countries.id nullable"
-      >
-        <option value="">— Sélectionner un pays —</option>
-        {countries.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.name} ({c.code_iso}){c.is_fatf ? " ⚠ FATF" : ""}
-            {c.is_border ? " ⚠ Frontalier" : ""}
-          </option>
-        ))}
-      </FormSelect>
+      <div className="flex flex-col">
+        <FormSelect
+          label="Pays / Nationalité"
+          name="pays"
+          value={data.pays}
+          error={errors.pays}
+          onChange={(e) => patch({ pays: e.target.value })}
+          helper="Optionnel"
+        >
+          <option value="">— Sélectionner un pays —</option>
+          {countries.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name} ({c.code_iso})
+            </option>
+          ))}
+        </FormSelect>
+        {selectedCountry && (
+          <div className="mt-1 flex items-center gap-1.5 text-xs">
+            <span className="text-[#6B7280]">Risque pays :</span>
+            <span
+              className={clsx(
+                "font-bold",
+                selectedCountry.is_fatf
+                  ? "text-[#DC2626]"
+                  : selectedCountry.is_border
+                    ? "text-[#D97706]"
+                    : "text-[#059669]",
+              )}
+            >
+              {selectedCountry.is_fatf
+                ? "ÉLEVÉ (Liste FATF)"
+                : selectedCountry.is_border
+                  ? "MOYEN (Frontalier)"
+                  : "FAIBLE (UEMOA)"}
+            </span>
+          </div>
+        )}
+      </div>
 
       {/* Zone géographique — FK risk_zones.id */}
-      <FormSelect
-        label="Zone géographique"
-        name="zone_geo"
-        value={data.zone_geo}
-        onChange={(e) => patch({ zone_geo: e.target.value })}
-        helper="Customer.zone_geo — FK risk_zones.id nullable"
-      >
-        <option value="">— Sélectionner une zone —</option>
-        {zones.map((z) => (
-          <option key={z.id} value={z.id}>
-            {z.name} — {z.risk_level}
-          </option>
-        ))}
-      </FormSelect>
+      <div className="flex flex-col">
+        <FormSelect
+          label="Zone géographique"
+          name="zone_geo"
+          value={data.zone_geo}
+          onChange={(e) => patch({ zone_geo: e.target.value })}
+          helper="Optionnel"
+        >
+          <option value="">— Sélectionner une zone —</option>
+          {zones.map((z) => (
+            <option key={z.id} value={z.id}>
+              {z.name} — {z.risk_level}
+            </option>
+          ))}
+        </FormSelect>
+        {selectedZone && (
+          <div className="mt-1 flex items-center gap-1.5 text-xs">
+            <span className="text-[#6B7280]">Risque zone :</span>
+            <span
+              className={clsx(
+                "font-bold",
+                ZONE_RISK_COLORS[selectedZone.risk_level],
+              )}
+            >
+              {selectedZone.risk_level}
+            </span>
+          </div>
+        )}
+      </div>
 
       {/* Affichage du risque de zone */}
       {selectedZone && (
@@ -305,7 +344,7 @@ function Step2({ data, errors, patch, countries, zones }) {
         error={errors.city}
         onChange={(e) => patch({ city: e.target.value })}
         placeholder="Cotonou"
-        helper="Customer.city — String(100) nullable"
+        helper="Optionnel"
       />
       <FormInput
         label="Région / Département"
@@ -314,7 +353,7 @@ function Step2({ data, errors, patch, countries, zones }) {
         error={errors.region}
         onChange={(e) => patch({ region: e.target.value })}
         placeholder="Littoral"
-        helper="Customer.region — String(100) nullable"
+        helper="Optionnel"
       />
 
 
@@ -324,7 +363,7 @@ function Step2({ data, errors, patch, countries, zones }) {
         <p className="text-sm font-medium text-[#6B7280] mb-3">
           Document d&apos;identité
           <span className="text-[#9CA3AF] text-xs ml-2 font-normal">
-            CustomerDoc — optionnel
+            Optionnel
           </span>
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-[#F9FAFB] p-4 rounded-xl border border-[#E5E7EB]">
@@ -333,7 +372,7 @@ function Step2({ data, errors, patch, countries, zones }) {
             name="type_doc"
             value={data.type_doc}
             onChange={(e) => patch({ type_doc: e.target.value })}
-            helper="CustomerDoc.type_doc — String(50) not null"
+            helper="Requis"
           >
             {TYPES_DOC.map((t) => (
               <option key={t} value={t}>
@@ -348,7 +387,7 @@ function Step2({ data, errors, patch, countries, zones }) {
             error={errors.numero}
             onChange={(e) => patch({ numero: e.target.value })}
             placeholder="B123456789"
-            helper="CustomerDoc.numero — String(100) nullable"
+            helper="Optionnel"
           />
           <FormInput
             label="Date d'expiration"
@@ -357,7 +396,7 @@ function Step2({ data, errors, patch, countries, zones }) {
             value={data.date_expiration}
             error={errors.date_expiration}
             onChange={(e) => patch({ date_expiration: e.target.value })}
-            helper="CustomerDoc.date_expiration — Date nullable"
+            helper="Optionnel"
           />
         </div>
       </div>
@@ -548,6 +587,21 @@ export default function AddClientPage() {
       // 1. Créer le client
       const created = await customerService.create(payload);
       toast.success(`Client créé : ${data.prenom} ${data.nom}`);
+
+      // 1.5 Envoyer le document KYC si un numéro a été saisi
+      if (data.numero && data.numero.trim()) {
+        try {
+          await customerService.createDocument(created.id, {
+            type_doc: data.type_doc,
+            numero: data.numero || null,
+            date_expiration: data.date_expiration || null,
+          });
+        } catch {
+          toast("Document KYC non enregistré — ajoutez-le depuis la fiche client.", {
+            icon: "⚠️",
+          });
+        }
+      }
 
       // 2. Scoring initial automatique (POST /api/scoring)
       try {

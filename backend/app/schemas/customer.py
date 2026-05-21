@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 from typing import Optional, List
 from datetime import date, datetime
 from uuid import UUID
@@ -13,8 +13,13 @@ class DocumentSchema(BaseModel):
     date_expiration: Optional[date]
     valide: bool
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
+
+
+class DocumentCreate(BaseModel):
+    type_doc: str
+    numero: Optional[str] = None
+    date_expiration: Optional[date] = None
 
 
 class AccountSchema(BaseModel):
@@ -24,8 +29,14 @@ class AccountSchema(BaseModel):
     date_ouverture: Optional[date]
     status: Optional[str]
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
+
+
+class AccountCreate(BaseModel):
+    type_compte: Optional[str] = None
+    solde_moyen: Optional[float] = None
+    date_ouverture: Optional[date] = None
+    status: Optional[str] = None
 
 
 class TransactionSchema(BaseModel):
@@ -40,8 +51,7 @@ class TransactionSchema(BaseModel):
     origine_pays_id: Optional[int]
     destination_pays_id: Optional[int]
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 # ─── Customer Create ──────────────────────────────────────
@@ -71,9 +81,6 @@ class CustomerCreate(BaseModel):
 # ─── Customer Update ──────────────────────────────────────
 
 class CustomerUpdate(BaseModel):
-    nom: Optional[str] = None
-    prenom: Optional[str] = None
-    date_naissance: Optional[date] = None
     phone: Optional[str] = None
     email: Optional[str] = None
 
@@ -103,8 +110,8 @@ class CustomerSummary(BaseModel):
     email: Optional[str]
     profession_code: Optional[str]
     profession_name: Optional[str]
-    city: Optional[str] = None           # ← Ajouté
-    region: Optional[str] = None         # ← Ajouté
+    city: Optional[str] = None
+    region: Optional[str] = None
     zone_geo: Optional[int]
     kyc_level: Optional[str]
     kyc_completion: Optional[int]
@@ -112,8 +119,7 @@ class CustomerSummary(BaseModel):
     status: Optional[str]
     date_creation: Optional[datetime]
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 # ─── Customer Detail (fiche complète + scoring) ───────────
 # Consommé par GET /api/clients/{id}
 # CRITIQUE : ce format est lu par le ScoringEngine de Magloire
@@ -149,5 +155,4 @@ class CustomerDetail(BaseModel):
     documents: List[DocumentSchema] = []
     accounts: List[AccountSchema] = []
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
