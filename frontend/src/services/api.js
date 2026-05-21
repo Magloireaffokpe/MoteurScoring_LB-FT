@@ -11,6 +11,14 @@ export const api = axios.create({
   withCredentials: true,
 });
 
+export function setAuthToken(token) {
+  api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+}
+
+export function clearAuthToken() {
+  delete api.defaults.headers.common["Authorization"];
+}
+
 // ── Gestion globale des erreurs HTTP ──────────────────────────────────────
 api.interceptors.response.use(
   (res) => res,

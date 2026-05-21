@@ -45,7 +45,7 @@ def login(data: LoginRequest, response: Response, request: Request, db: Session 
         key="access_token",
         value=token,
         httponly=True,
-        samesite="lax",
+        samesite="none" if not settings.DEBUG else "lax",
         secure=not settings.DEBUG,
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
