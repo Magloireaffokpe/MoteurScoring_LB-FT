@@ -152,7 +152,7 @@ function NotificationBell() {
     if (!alertService || typeof alertService.list !== "function") {
       return;
     }
-    const promise = alertService.list({ limit: 50, statut: "OPEN" }, { silent: true });
+    const promise = alertService.list({ limit: 10, statut: "OPEN" }, { silent: true });
     if (!promise || typeof promise.then !== "function") {
       return;
     }
@@ -171,7 +171,7 @@ function NotificationBell() {
 
   useEffect(() => {
     fetchHighRiskAlerts();
-    const interval = setInterval(fetchHighRiskAlerts, 15000);
+    const interval = setInterval(fetchHighRiskAlerts, 30000);
     return () => clearInterval(interval);
   }, [fetchHighRiskAlerts]);
 
