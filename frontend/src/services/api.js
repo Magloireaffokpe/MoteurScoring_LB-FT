@@ -29,9 +29,13 @@ api.interceptors.response.use(
       return Promise.reject(err);
     }
 
-    if (status === 401) {
-      window.location.href = "/login";
-      toast.error("Session expirée, veuillez vous reconnecter.");
+    if (!status) {
+      toast.error("Erreur de connexion au serveur. Vérifiez votre réseau.");
+    } else if (status === 401) {
+      if (!window.location.pathname.startsWith("/login")) {
+        window.location.href = "/login";
+        toast.error("Session expirée, veuillez vous reconnecter.");
+      }
     } else if (status === 403) {
       toast.error("Accès refusé — droits insuffisants.");
     } else if (status === 422) {
