@@ -137,19 +137,22 @@ export default function ClientDetailPage() {
   const { data: countriesData } = useFetch(() => referentialService.countries(), []);
   const countries = countriesData || [];
 
-  const selectedOriginCountry = countries.find(
-    (c) => String(c.id) === String(txForm.origine_pays_id)
-  );
   const selectedDestinationCountry = countries.find(
     (c) => String(c.id) === String(txForm.destination_pays_id)
   );
 
-  const txRequiresOrigin = txForm.type_op === "DEPOT" || txForm.type_op === "VIREMENT";
-  const txRequiresDestination = txForm.type_op === "RETRAIT" || txForm.type_op === "VIREMENT";
+  const txRequiresOrigin = txForm.type_op === "DEPOT";
+  const txRequiresDestination = txForm.type_op === "VIREMENT";
 
   const getAccountTypesForOp = (typeOp) => {
     if (typeOp === "RETRAIT") return ["COURANT"];
     return ["COURANT", "EPARGNE"];
+  };
+
+  const getCanalOptionsForOp = (typeOp) => {
+    if (typeOp === "RETRAIT") return ["GUICHET", "MOBILE", "ATM"];
+    if (typeOp === "VIREMENT") return ["INTERNET", "MOBILE", "GUICHET"];
+    return ["GUICHET", "MOBILE", "INTERNET", "ATM"];
   };
 
   const filteredAccounts = (client?.accounts || []).filter(
@@ -219,14 +222,8 @@ export default function ClientDetailPage() {
     if (!txForm.montant || Number(txForm.montant) <= 0) {
       errors.montant = "Le montant doit être supérieur à 0";
     }
-    if (txRequiresOrigin && !txForm.origine) {
-      errors.origine = "Origine requise";
-    }
     if (txRequiresDestination && !txForm.destination) {
       errors.destination = "Destination requise";
-    }
-    if (txRequiresOrigin && !txForm.origine_pays_id) {
-      errors.origine_pays_id = "Pays d'origine requis";
     }
     if (txForm.type_op === "VIREMENT" && !txForm.destination_pays_id) {
       errors.destination_pays_id = "Pays de destination requis";
@@ -239,16 +236,18 @@ export default function ClientDetailPage() {
     setSubmittingTx(true);
 
     try {
+      const isDepot = txForm.type_op === "DEPOT";
+      const isVirement = txForm.type_op === "VIREMENT";
       const r = await customerService.createTransaction(id, {
         compte_id: txForm.compte_id,
         montant: Number(txForm.montant),
         devise: "XOF",
         type_op: txForm.type_op,
         canal: txForm.canal,
-        origine: txForm.origine || null,
-        destination: txForm.destination || null,
-        origine_pays_id: txForm.origine_pays_id ? parseInt(txForm.origine_pays_id) : null,
-        destination_pays_id: txForm.destination_pays_id ? parseInt(txForm.destination_pays_id) : null,
+        origine: isDepot ? (txForm.origine || null) : null,
+        destination: isVirement ? txForm.destination : null,
+        origine_pays_id: (isDepot || isVirement) ? 1 : null,
+        destination_pays_id: isVirement ? (txForm.destination_pays_id ? parseInt(txForm.destination_pays_id) : null) : null,
       });
       const scoreMsg = r.new_score_global != null
         ? ` — Score : ${r.new_score_global}/100 (${normalizeCategory(r.new_score_category)})`
@@ -893,13 +892,13 @@ export default function ClientDetailPage() {
         <form onSubmit={handleAddTransaction} className="space-y-4">
           <div className="bg-[#F9FAFB] border border-[#E5E7EB] rounded-lg px-4 py-3 text-sm">
             {txForm.type_op === "DEPOT" && (
-              <p>Argent déposé sur le compte. Indiquez qui a déposé et d'où vient l'argent.</p>
+              <p>Argent déposé sur le compte. Vous pouvez indiquer la source des fonds (optionnel).</p>
             )}
             {txForm.type_op === "RETRAIT" && (
-              <p>Argent retiré du compte courant. Indiquez qui retire l'argent.</p>
+              <p>Argent retiré du compte courant.</p>
             )}
             {txForm.type_op === "VIREMENT" && (
-              <p>Argent transféré depuis un compte courant ou épargne. Indiquez l'expéditeur, le destinataire et les pays.</p>
+              <p>Argent transféré depuis un compte courant ou épargne. Indiquez le destinataire et le pays de destination.</p>
             )}
           </div>
 
@@ -913,6 +912,7 @@ export default function ClientDetailPage() {
                   ...txForm,
                   type_op: e.target.value,
                   compte_id: "",
+                  canal: getCanalOptionsForOp(e.target.value)[0],
                   origine: "",
                   destination: "",
                   origine_pays_id: "",
@@ -931,10 +931,9 @@ export default function ClientDetailPage() {
               value={txForm.canal}
               onChange={(e) => setTxForm({ ...txForm, canal: e.target.value })}
             >
-              <option value="GUICHET">GUICHET</option>
-              <option value="MOBILE">MOBILE</option>
-              <option value="INTERNET">INTERNET</option>
-              <option value="ATM">ATM</option>
+              {getCanalOptionsForOp(txForm.type_op).map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
             </FormSelect>
           </div>
 
@@ -978,23 +977,36 @@ export default function ClientDetailPage() {
             </div>
           </div>
 
-          {/* DEPOT + VIREMENT : Origine */}
-          {(txForm.type_op === "DEPOT" || txForm.type_op === "VIREMENT") && (
+          {/* DEPOT : Origine (optionnel) */}
+          {txForm.type_op === "DEPOT" && (
             <div className="space-y-4">
               <FormInput
-                label="Origine — Qui envoie l'argent ?"
-                required={txRequiresOrigin}
-                placeholder="Nom du déposant ou de l'expéditeur"
+                label="Origine — Source des fonds"
+                placeholder="Ex: salaire, vente, aide familiale"
                 value={txForm.origine || ""}
                 onChange={(e) => setTxForm({ ...txForm, origine: e.target.value })}
                 error={txErrors.origine}
               />
+            </div>
+          )}
+
+          {/* VIREMENT : Destination */}
+          {txForm.type_op === "VIREMENT" && (
+            <div className="space-y-4">
+              <FormInput
+                label="Destination — Qui reçoit l'argent ?"
+                required
+                placeholder="Ex: Koffi Assogba – Ecobank Togo"
+                value={txForm.destination || ""}
+                onChange={(e) => setTxForm({ ...txForm, destination: e.target.value })}
+                error={txErrors.destination}
+              />
               <FormSelect
-                label="Pays d'origine — D'où vient l'argent ?"
-                required={txRequiresOrigin}
-                value={txForm.origine_pays_id}
-                onChange={(e) => setTxForm({ ...txForm, origine_pays_id: e.target.value })}
-                error={txErrors.origine_pays_id}
+                label="Pays de destination — Où va l'argent ?"
+                required
+                value={txForm.destination_pays_id}
+                onChange={(e) => setTxForm({ ...txForm, destination_pays_id: e.target.value })}
+                error={txErrors.destination_pays_id}
               >
                 <option value="">— Sélectionner un pays —</option>
                 {countries.map((c) => (
@@ -1003,55 +1015,6 @@ export default function ClientDetailPage() {
                   </option>
                 ))}
               </FormSelect>
-              {selectedOriginCountry && (
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-[#F9FAFB] rounded-lg border border-[#E5E7EB] text-xs">
-                  <span className="text-[#6B7280]">Risque pays :</span>
-                  <span className={clsx(
-                    "font-bold",
-                    selectedOriginCountry.is_fatf
-                      ? "text-[#DC2626]"
-                      : selectedOriginCountry.is_border
-                        ? "text-[#D97706]"
-                        : "text-[#059669]",
-                  )}>
-                    {selectedOriginCountry.is_fatf
-                      ? "ÉLEVÉ (Liste FATF)"
-                      : selectedOriginCountry.is_border
-                        ? "MOYEN (Pays frontalier)"
-                        : "FAIBLE (Zone UEMOA)"}
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* RETRAIT + VIREMENT : Destination */}
-          {(txForm.type_op === "RETRAIT" || txForm.type_op === "VIREMENT") && (
-            <div className="space-y-4">
-              <FormInput
-                label="Destination — Qui reçoit l'argent ?"
-                required={txRequiresDestination}
-                placeholder="Nom du bénéficiaire"
-                value={txForm.destination || ""}
-                onChange={(e) => setTxForm({ ...txForm, destination: e.target.value })}
-                error={txErrors.destination}
-              />
-              {txForm.type_op === "VIREMENT" && (
-                <FormSelect
-                  label="Pays de destination — Où va l'argent ?"
-                  required
-                  value={txForm.destination_pays_id}
-                  onChange={(e) => setTxForm({ ...txForm, destination_pays_id: e.target.value })}
-                  error={txErrors.destination_pays_id}
-                >
-                  <option value="">— Sélectionner un pays —</option>
-                  {countries.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} ({c.code_iso})
-                    </option>
-                  ))}
-                </FormSelect>
-              )}
               {selectedDestinationCountry && (
                 <div className="flex items-center gap-2 px-3 py-1.5 bg-[#F9FAFB] rounded-lg border border-[#E5E7EB] text-xs">
                   <span className="text-[#6B7280]">Risque pays :</span>
