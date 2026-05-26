@@ -260,7 +260,7 @@ export default function DashboardPage() {
     <Layout pageTitle="Dashboard">
       <div className="space-y-6">
         {/* ── KPI ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           <KpiCard
             label="Total clients"
             value={stats?.total_clients?.toLocaleString("fr-FR")}
@@ -299,6 +299,27 @@ export default function DashboardPage() {
             icon={Shield}
             color="primary"
             sub="Sous surveillance renforcée"
+          />
+          <KpiCard
+            label="Alertes seuil"
+            value={stats?.seuil_alerts_count ?? 0}
+            icon={TrendingUp}
+            color="accent"
+            sub="Seuil monétaire dépassé"
+          />
+          <KpiCard
+            label="Bénéficiaires suspects"
+            value={stats?.beneficiaire_alerts_count ?? 0}
+            icon={AlertTriangle}
+            color="danger"
+            sub="Transferts groupés détectés"
+          />
+          <KpiCard
+            label="Alertes PEP"
+            value={stats?.pep_alerts_count ?? 0}
+            icon={Shield}
+            color="accent"
+            sub="Personnes exposées politiquement"
           />
         </div>
 

@@ -50,6 +50,22 @@ def get_dashboard_stats(
     tx_total = db.query(func.sum(Transaction.montant))\
         .filter(Transaction.date_op >= since_30d).scalar() or 0
 
+    # Compteurs par type d'alerte
+    pep_alerts_count = db.query(func.count(Alert.id)).filter(
+        Alert.type_alerte == "PEP_DETECTE",
+        Alert.statut == "OPEN",
+    ).scalar() or 0
+
+    seuil_alerts_count = db.query(func.count(Alert.id)).filter(
+        Alert.type_alerte == "SEUIL_DEPASSE",
+        Alert.statut == "OPEN",
+    ).scalar() or 0
+
+    beneficiaire_alerts_count = db.query(func.count(Alert.id)).filter(
+        Alert.type_alerte == "BENEFICIAIRE_GROUPEMENT",
+        Alert.statut == "OPEN",
+    ).scalar() or 0
+
     return {
         "total_clients": total_clients,
         "clients_by_risk_category": dict(clients_by_risk),
@@ -58,7 +74,10 @@ def get_dashboard_stats(
         "transactions_last_30d": {
             "count": tx_count,
             "total_amount": float(tx_total)
-        }
+        },
+        "pep_alerts_count": pep_alerts_count,
+        "seuil_alerts_count": seuil_alerts_count,
+        "beneficiaire_alerts_count": beneficiaire_alerts_count,
     }
 
 

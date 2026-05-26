@@ -15,14 +15,12 @@ Version : 1.3 — Mai 2026
 Changelog v1.3 :
   [Fix 7] _score_c5        : ancienne PEP (active=False) → note 50 au lieu de 0
                              (recommandation GAFI R.12 — vigilance 5 ans post-mandat)
-  [Fix 8] _score_c3        : card testing — détection micro-transactions carte répétées
-                             (comportemental uniquement ; validité technique gérée ailleurs)
   [Fix 9] _score_c3        : near-threshold smurfing — montants entre 80 % et 100 %
                              du seuil FATF (495 000, 498 000 XOF…) ajoutés aux suspects
   [Fix 10] _detect_duplicates : nouvelle méthode — transactions identiques (même montant
                              arrondi + même destination) dans une fenêtre de 24 h
-  [Fix 11] calculate_score : result dict étendu avec smurfing_detected, card_testing_count
-                             et c5_score pour que le router puisse créer les alertes fines
+  [Fix 11] calculate_score : result dict étendu avec smurfing_detected et c5_score
+                             pour que le router puisse créer les alertes fines
                              sans re-interroger la base
 
 Changelog v1.2 (inchangé) :
@@ -41,6 +39,7 @@ Changelog v1.2 (inchangé) :
 from __future__ import annotations
 
 import logging
+import unicodedata
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
@@ -86,11 +85,6 @@ _SMURFING_MIN_COUNT = 3  # nb minimum de tx suspects pour déclencher
 _SMURFING_WINDOW_DAYS = 7  # fenêtre de concentration temporelle [Fix 3]
 _SMURFING_REVENUE_MULT = 3.0  # ratio min total_suspect / revenu_mensuel [Fix 3]
 _SMURFING_NEAR_LOW_PCT = 0.80  # borne basse near-threshold : 80 % du seuil [Fix 9]
-
-# Card testing — micro-transactions carte [Fix 8]
-_CARD_TESTING_MAX_AMOUNT = 1_000  # XOF : seuil micro-transaction
-_CARD_TESTING_ALERT_COUNT = 5  # nb min pour alerte forte
-_CARD_TESTING_WARN_COUNT = 2  # nb min pour alerte modérée
 
 # Transactions dupliquées [Fix 10]
 _DUPLICATE_WINDOW_SECONDS = 86_400  # 24 h
@@ -141,7 +135,6 @@ class ScoringEngine:
             # Champs étendus v1.3 — utilisés par le router pour les alertes fines
             "c5_score"           : float,  # 0 | 50 | 100
             "smurfing_detected"  : bool,
-            "card_testing_count" : int,    # nb de micro-tx carte détectées
         }
     """
 
@@ -151,7 +144,6 @@ class ScoringEngine:
         self._thresholds: list[dict[str, Any]] = []
         # Flags internes réinitialisés à chaque appel de calculate_score [Fix 11]
         self._smurfing_detected: bool = False
-        self._card_testing_count: int = 0
 
     # ──────────────────────────────────────────────────────────────────────
     # Point d'entrée public
@@ -163,14 +155,13 @@ class ScoringEngine:
 
         :param customer_id: UUID du client (table customers).
         :returns: dict avec global_score, risk_category, detail_json, et
-                  champs étendus (c5_score, smurfing_detected, card_testing_count).
+                  champs étendus (c5_score, smurfing_detected).
         :raises ValueError: si le client est introuvable en base.
         """
         logger.info("Début calcul score — client %s", customer_id)
 
         # Réinitialisation des flags internes [Fix 11]
         self._smurfing_detected = False
-        self._card_testing_count = 0
 
         self._load_weights()
         self._load_thresholds()
@@ -215,7 +206,6 @@ class ScoringEngine:
             # Champs étendus — non-breaking vis-à-vis du schéma API existant [Fix 11]
             "c5_score": notes["C5"],
             "smurfing_detected": self._smurfing_detected,
-            "card_testing_count": self._card_testing_count,
         }
 
     # ──────────────────────────────────────────────────────────────────────
@@ -357,12 +347,13 @@ class ScoringEngine:
 
         Détections couvertes (v1.3) :
           a) Ratio montant total / revenus déclarés sur 3 mois
+          a') Ratio 30 jours glissants
           b) Fréquence anormale de transactions
           c) Retraits cash répétés
           d) Smurfing (montants ronds + near-threshold) [Fix 3, Fix 9]
+          d') Homogénéité des montants
           e) Destinations vers pays à risque
-          f) Card testing — micro-tx carte répétées [Fix 8]
-          g) Transactions dupliquées / replay [Fix 10]
+          f) Transactions dupliquées / replay [Fix 10]
         """
         # [Fix 6] cutoff naïf pour compatibilité PostgreSQL Column(DateTime) sans tz
         cutoff = _naive_utc_now() - timedelta(days=_TX_WINDOW_DAYS)
@@ -403,6 +394,23 @@ class ScoringEngine:
             elif ratio > 1.5:
                 note = max(note, 40.0)
 
+        # ── a') Ratio 30 jours glissants ───────────────────────────────────
+        cutoff_30d = _naive_utc_now() - timedelta(days=30)
+        tx_30d = [
+            tx for tx in transactions
+            if (_strip_tz(tx.date_op) or datetime.min) >= cutoff_30d
+        ]
+        if tx_30d and rev > 0:
+            total_30d = sum(float(tx.montant) for tx in tx_30d)
+            ratio_30d = total_30d / rev
+            if   ratio_30d > 3: note = max(note, 80.0)
+            elif ratio_30d > 2: note = max(note, 60.0)
+            elif ratio_30d > 1: note = max(note, 40.0)
+            logger.debug(
+                "C3 ratio_30d=%.2f (total=%.0f XOF, rev_mensuel=%.0f XOF)",
+                ratio_30d, total_30d, rev
+            )
+
         # ── b) Fréquence anormale ──────────────────────────────────────────
         tx_per_day = len(transactions) / _TX_WINDOW_DAYS
         if tx_per_day > 5:
@@ -425,6 +433,18 @@ class ScoringEngine:
             self._smurfing_detected = True  # [Fix 11] exposé dans le résultat
             logger.warning("⚠ Smurfing détecté — client %s", customer.id)
 
+        # ── d') Détection d'homogénéité des montants ──────────────────────
+        if len(montants) >= 5 and float(np.mean(montants)) > 0:
+            cv = float(np.std(montants) / np.mean(montants))
+            if cv < 0.10:
+                note = max(note, 60.0)
+                logger.warning(
+                    "⚠ Homogénéité suspecte — client %s : CV=%.3f sur %d tx",
+                    customer.id, cv, len(montants)
+                )
+            elif cv < 0.15:
+                note = max(note, 40.0)
+
         # ── e) Destinations vers pays à risque ────────────────────────────
         risk_ids = self._get_risk_country_ids()
         risky = sum(1 for pid in pays_dest if pid in risk_ids)
@@ -435,36 +455,7 @@ class ScoringEngine:
             elif ratio_risky > 0.2:
                 note = max(note, 55.0)
 
-        # ── f) Card testing — micro-transactions carte répétées [Fix 8] ───
-        # La validité technique de la carte est gérée par le service dédié.
-        # Ici on détecte le pattern comportemental : petits montants répétés
-        # sur carte pour valider une carte volée avant une fraude de grande ampleur.
-        card_micro_tx = [
-            tx
-            for tx in transactions
-            if (
-                tx.canal and "CARTE" in tx.canal.upper()
-                and 0 < float(tx.montant) <= _CARD_TESTING_MAX_AMOUNT
-            )
-        ]
-        self._card_testing_count = len(card_micro_tx)  # [Fix 11]
-        if len(card_micro_tx) >= _CARD_TESTING_ALERT_COUNT:
-            note = max(note, 75.0)
-            logger.warning(
-                "⚠ Card testing probable — client %s : %d micro-tx carte (≤%d XOF)",
-                customer.id,
-                len(card_micro_tx),
-                _CARD_TESTING_MAX_AMOUNT,
-            )
-        elif len(card_micro_tx) >= _CARD_TESTING_WARN_COUNT:
-            note = max(note, 45.0)
-            logger.debug(
-                "Card testing possible — client %s : %d micro-tx carte",
-                customer.id,
-                len(card_micro_tx),
-            )
-
-        # ── g) Transactions dupliquées / replay [Fix 10] ──────────────────
+        # ── f) Transactions dupliquées / replay [Fix 10] ──────────────────
         dupes = self._detect_duplicates(transactions)
         if dupes >= 3:
             note = max(note, 60.0)
@@ -583,15 +574,14 @@ class ScoringEngine:
         groups: dict[tuple, list[datetime]] = defaultdict(list)
 
         for tx in transactions:
-            if tx.destination_pays_id is None:
-                continue
             d = _strip_tz(tx.date_op)
             if d is None:
                 continue
             key = (
                 round(float(tx.montant), _DUPLICATE_ROUND_TO),
-                tx.destination_pays_id,
                 tx.compte_id,
+                (tx.type_op or "").upper(),
+                tx.destination_pays_id,
             )
             groups[key].append(d)
 
@@ -651,8 +641,39 @@ class ScoringEngine:
         else:
             note = 75.0
 
+        # ── Détection de réactivation brutale ──────────────────────────────
+        account_ids = [acc.id for acc in (customer.accounts or [])]
+        if account_ids and delta > 365:  # compte > 1 an
+            cutoff_180d = _naive_utc_now() - timedelta(days=180)
+            cutoff_30d_c4 = _naive_utc_now() - timedelta(days=30)
+
+            tx_180d = self.db.query(Transaction).filter(
+                Transaction.compte_id.in_(account_ids),
+                Transaction.date_op >= cutoff_180d,
+                Transaction.date_op < cutoff_30d_c4,
+            ).count()
+
+            tx_30d = self.db.query(Transaction).filter(
+                Transaction.compte_id.in_(account_ids),
+                Transaction.date_op >= cutoff_30d_c4,
+            ).count()
+
+            if tx_180d == 0 and tx_30d >= 3:
+                note = min(100.0, note + 30.0)
+                logger.warning(
+                    "⚠ Réactivation brutale — client %s : 0 tx sur 180j, %d tx sur 30j",
+                    customer.id, tx_30d
+                )
+
         logger.debug("C4=%.1f (ancienneté=%d jours)", note, delta)
         return round(note, 2)
+
+    @staticmethod
+    def _normalize_name(text: str) -> str:
+        """Normalise un nom : strip, upper, NFD, supprime les accents."""
+        text = (text or "").strip().upper()
+        text = unicodedata.normalize("NFD", text)
+        return "".join(c for c in text if unicodedata.category(c) != "Mn")
 
     # ──────────────────────────────────────────────────────────────────────
     # C5 — Statut PEP (poids 15 %)
@@ -681,11 +702,13 @@ class ScoringEngine:
 
         # 2. Recherche dans pep_list SANS filtre active — [Fix 7]
         #    order_by active.desc() : si doublon de nom, la PEP active est retournée en tête.
+        nom_norm   = self._normalize_name(customer.nom)
+        prenom_norm = self._normalize_name(customer.prenom)
         match: PepEntry | None = (
             self.db.query(PepEntry)
             .filter(
-                PepEntry.nom.ilike(customer.nom),
-                PepEntry.prenom.ilike(customer.prenom),
+                PepEntry.nom.ilike(f"%{nom_norm}%"),
+                PepEntry.prenom.ilike(f"%{prenom_norm}%"),
             )
             .order_by(PepEntry.active.desc())
             .first()
@@ -705,15 +728,27 @@ class ScoringEngine:
             )
             return 100.0
 
-        # PEP inactive — vigilance résiduelle GAFI 5 ans
-        logger.warning(
-            "⚠ ANCIENNE PEP — client %s : %s %s (date_fin=%s, vigilance renforcée)",
-            customer.id,
-            customer.prenom,
-            customer.nom,
-            match.date_fin,
-        )
-        return 50.0
+        # PEP inactive — vigilance résiduelle GAFI 5 ans post-mandat
+        if match.date_fin:
+            years_since = (date.today() - match.date_fin).days / 365
+            if years_since > 5:
+                logger.debug(
+                    "C5=0 — ancienne PEP hors période GAFI (%.1f ans post-mandat)",
+                    years_since
+                )
+                return 0.0
+            logger.warning(
+                "⚠ ANCIENNE PEP dans période GAFI — client %s : %.1f ans post-mandat",
+                customer.id, years_since
+            )
+            return 50.0
+        else:
+            # date_fin inconnue → prudence maximale, on maintient la vigilance
+            logger.warning(
+                "⚠ ANCIENNE PEP date_fin inconnue — client %s : vigilance maintenue",
+                customer.id
+            )
+            return 50.0
 
     # ──────────────────────────────────────────────────────────────────────
     # C6 — Cohérence KYC (poids 10 %)

@@ -1,3 +1,5 @@
+from datetime import date, datetime, timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_
@@ -15,7 +17,11 @@ from app.schemas.customer import (
 from app.schemas.common import PaginatedResponse
 from app.services.audit_service import log_action
 from app.services.customer_service import compute_kyc_completion, determine_kyc_level
-from app.services.alert_service import create_kyc_alert_if_needed
+from app.services.alert_service import (
+    create_kyc_alert_if_needed,
+    create_if_not_open,
+    ALERT_TYPE_PEP_DETECTE,
+)
 
 
 router = APIRouter()
@@ -94,7 +100,15 @@ def get_client(
 
     log_action(db, str(current_user.id), "VIEW_CUSTOMER", client_id=str(customer_id))
 
-    return customer
+    # Calcul prochaine révision KYC (date_creation + 6 mois)
+    detail = CustomerDetail.model_validate(customer)
+    if customer.date_creation:
+        base = customer.date_creation
+        if hasattr(base, "date"):
+            base = base.date()
+        detail.prochaine_revision_kyc = base + timedelta(days=180)
+
+    return detail
 
 
 @router.post("/clients", response_model=CustomerSummary, status_code=201)
@@ -131,6 +145,15 @@ def create_client(
     db.refresh(customer)
 
     create_kyc_alert_if_needed(db, customer.id, completion)
+
+    # ── Alerte PEP sur création ──────────────────────────────────────────
+    if customer.statut_pep:
+        create_if_not_open(
+            db=db,
+            client_id=customer.id,
+            type_alerte=ALERT_TYPE_PEP_DETECTE,
+            decision="Statut PEP détecté automatiquement à la création du client.",
+        )
 
     # Déclenche le scoring initial (module de Magloire)
     try:
@@ -185,6 +208,15 @@ def update_client(
     completion = compute_kyc_completion(customer)
     customer.kyc_completion = completion
     customer.kyc_level = determine_kyc_level(completion)
+
+    # ── Alerte PEP sur modification ──────────────────────────────────────
+    if fields.get("statut_pep") is True:
+        create_if_not_open(
+            db=db,
+            client_id=customer.id,
+            type_alerte=ALERT_TYPE_PEP_DETECTE,
+            decision="Statut PEP activé lors de la modification du client.",
+        )
 
     db.commit()
     db.refresh(customer)

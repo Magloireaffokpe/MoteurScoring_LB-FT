@@ -50,6 +50,10 @@ ALERT_TYPE_PEP_ACTIF = "PEP_ACTIF"  # PEP en fonction — priorité critique
 ALERT_TYPE_PEP_ANCIEN = "PEP_ANCIEN"  # Ancienne PEP — surveillance GAFI 5 ans
 ALERT_TYPE_CARD_TESTING = "CARD_TESTING"  # Card testing comportemental
 
+# Nouveaux — DOS de seuil et bénéficiaire groupé [Fix AML]
+ALERT_TYPE_SEUIL_DEPASSE = "SEUIL_DEPASSE"
+ALERT_TYPE_BENEFICIAIRE_GROUPEMENT = "BENEFICIAIRE_GROUPEMENT"
+
 # ── Statuts ───────────────────────────────────────────────────────────────
 STATUS_OPEN = "OPEN"
 STATUS_UNDER_REVIEW = "UNDER_REVIEW"
@@ -108,6 +112,59 @@ def has_open_alert(db: Session, customer_id: UUID, alert_type: str) -> bool:
         )
         .first()
     ) is not None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Fonction générique anti-doublon
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def create_if_not_open(
+    db: Session,
+    client_id: UUID,
+    type_alerte: str,
+    decision: Optional[str] = None,
+) -> Optional[Alert]:
+    """
+    Crée une alerte du type donné uniquement si aucune alerte
+    de ce type n'est déjà OPEN ou UNDER_REVIEW pour ce client.
+
+    Évite les doublons d'alertes sur des événements récurrents
+    (ex: cumul seuil dépassé plusieurs fois dans le même mois).
+
+    :param db:          Session SQLAlchemy active.
+    :param client_id:   UUID du client concerné.
+    :param type_alerte: Type d'alerte (constantes ALERT_TYPE_*).
+    :param decision:    Texte libre décrivant la raison.
+    :returns:           Instance Alert flushée, ou None si déjà ouverte.
+    """
+    existing = (
+        db.query(Alert)
+        .filter(
+            Alert.client_id == client_id,
+            Alert.type_alerte == type_alerte,
+            Alert.statut.in_([STATUS_OPEN, STATUS_UNDER_REVIEW]),
+        )
+        .first()
+    )
+    if existing:
+        logger.info(
+            "Alerte %s déjà ouverte pour client %s — pas de doublon",
+            type_alerte, client_id,
+        )
+        return None
+
+    alert = Alert(
+        client_id=client_id,
+        type_alerte=type_alerte,
+        statut=STATUS_OPEN,
+        decision=decision,
+        sar_declare=False,
+    )
+    db.add(alert)
+    db.flush()
+    logger.info("Alerte créée — type=%s client=%s", type_alerte, client_id)
+    return alert
 
 
 # ═══════════════════════════════════════════════════════════════════════════

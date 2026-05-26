@@ -32,6 +32,8 @@ const TYPE_OPTS = [
   { v: "SCORE_ELEVE", l: "Score élevé" },
   { v: "KYC_INCOMPLET", l: "KYC incomplet" },
   { v: "PEP_DETECTE", l: "PEP détecté" },
+  { v: "SEUIL_DEPASSE", l: "Seuil monétaire dépassé" },
+  { v: "BENEFICIAIRE_GROUPEMENT", l: "Bénéficiaire suspect" },
 ];
 
 const RISK_OPTS = [

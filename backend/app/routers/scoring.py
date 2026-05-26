@@ -15,13 +15,12 @@ Auteur  : Dev A — AFFOKPE Magloire
 Version : 1.3 — Mai 2026
 
 Changelog v1.3 :
-  [Int-1] _run_scoring        : intégration des 3 nouvelles alertes fines issues
+  [Int-1] _run_scoring        : intégration des alertes fines issues
                                 des champs étendus retournés par ScoringEngine v1.3 :
                                   • create_pep_alert_if_needed    (c5_score)
                                   • create_smurfing_alert_if_needed (smurfing_detected)
-                                  • create_card_testing_alert_if_needed (card_testing_count)
   [Int-2] rescore_all_customers : même intégration pour le rescoring global
-  [Int-3] Imports alert_service : ajout des 3 nouvelles fonctions (imports additifs,
+  [Int-3] Imports alert_service : ajout des fonctions d'alerte fine (imports additifs,
                                   rien de supprimé — non-breaking)
 
 Changelog v1.2 (inchangé) :
@@ -58,7 +57,6 @@ from app.services.alert_service import (
     create_score_alert_if_needed,
     create_pep_alert_if_needed,
     create_smurfing_alert_if_needed,
-    create_card_testing_alert_if_needed,
 )
 from app.services.scoring import ScoringEngine
 
@@ -171,7 +169,6 @@ def _create_fine_alerts(
     Alertes créées :
       • PEP_ACTIF / PEP_ANCIEN  — selon la note brute C5 (0 | 50 | 100)
       • SMURFING                 — si smurfing_detected == True
-      • CARD_TESTING             — si card_testing_count ≥ 5
 
     :param db:            Session SQLAlchemy active.
     :param customer_id:   UUID du client scoré.
@@ -195,13 +192,6 @@ def _create_fine_alerts(
             skip_if_open=skip_if_open,
         )
 
-    # Alerte card testing — pattern comportemental micro-tx carte
-    create_card_testing_alert_if_needed(
-        db=db,
-        customer_id=customer_id,
-        micro_tx_count=result["card_testing_count"],
-        skip_if_open=skip_if_open,
-    )
 
 
 def _run_scoring(
@@ -311,14 +301,13 @@ def _run_scoring(
     db.refresh(new_score)
 
     logger.info(
-        "%s — client=%s  score=%d  catégorie=%s  smurfing=%s  c5=%.0f  card_testing=%d",
+        "%s — client=%s  score=%d  catégorie=%s  smurfing=%s  c5=%.0f",
         action,
         customer_id,
         result["global_score"],
         result["risk_category"],
         result["smurfing_detected"],
         result["c5_score"],
-        result["card_testing_count"],
     )
 
     return _build_score_response(new_score)
@@ -339,7 +328,7 @@ def _run_scoring(
         "Calcule le score LBC/FT d'un client selon les 6 critères pondérés (C1–C6). "
         "Crée automatiquement une alerte **SCORE_ELEVE** si `global_score ≥ 67`. "
         "Crée également des alertes fines : **PEP_ACTIF**, **PEP_ANCIEN**, "
-        "**SMURFING**, **CARD_TESTING** selon les signaux détectés. "
+        "**SMURFING** selon les signaux détectés. "
         "Marque l'ancien score `is_current=False`. "
         "Action journalisée dans `audit_logs`. "
         "\n\nRôles autorisés : **admin**, **compliance_officer**."

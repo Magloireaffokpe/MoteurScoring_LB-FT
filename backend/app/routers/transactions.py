@@ -1,6 +1,7 @@
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import Optional
 from uuid import UUID
 from datetime import datetime, timedelta, timezone
@@ -14,13 +15,16 @@ from app.schemas.transaction import TransactionCreateResponse, TransactionCreate
 from app.schemas.common import PaginatedResponse
 from app.schemas.score import _normalize_risk_category
 from app.services.audit_service import log_action, ACTION_SCORING_RESCORE
-from app.services.scoring import ScoringEngine
+from app.services.scoring import ScoringEngine, _naive_utc_now
 from app.services.alert_service import (
     create_score_alert_if_needed,
     create_pep_alert_if_needed,
     create_smurfing_alert_if_needed,
-    create_card_testing_alert_if_needed,
+    create_if_not_open,
+    ALERT_TYPE_SEUIL_DEPASSE,
 )
+from app.services.beneficiaire_service import check_and_alert
+from app.config import SEUIL_MONETAIRE, SEUIL_ESPECES, FENETRE_CUMUL_JOURS
 
 logger = logging.getLogger(__name__)
 
@@ -120,15 +124,58 @@ def create_transaction(
         create_pep_alert_if_needed(db, customer_id, result["c5_score"], skip_if_open=True)
         if result["smurfing_detected"]:
             create_smurfing_alert_if_needed(db, customer_id, skip_if_open=True)
-        create_card_testing_alert_if_needed(
-            db, customer_id, micro_tx_count=result["card_testing_count"], skip_if_open=True
-        )
 
         log_action(db, str(current_user.id), ACTION_SCORING_RESCORE,
                    resource_type="customer", resource_id=str(customer_id),
                    ip_address=http_request.client.host if http_request.client else None)
     except Exception as exc:
         logger.error("Auto-rescore failed after transaction: %s", exc)
+
+    # ── Détection seuil monétaire (toutes opérations) ────────────────────
+    cutoff_30d = _naive_utc_now() - timedelta(days=FENETRE_CUMUL_JOURS)
+
+    cumul_global = (
+        db.query(func.coalesce(func.sum(Transaction.montant), 0))
+        .join(CustomerAccount, Transaction.compte_id == CustomerAccount.id)
+        .filter(
+            CustomerAccount.client_id == customer_id,
+            Transaction.date_op >= cutoff_30d,
+        )
+        .scalar() or 0
+    )
+
+    if float(cumul_global) > SEUIL_MONETAIRE:
+        create_if_not_open(
+            db=db,
+            client_id=customer_id,
+            type_alerte=ALERT_TYPE_SEUIL_DEPASSE,
+            decision=f"Cumul 30j toutes opérations : {float(cumul_global):,.0f} XOF (seuil {SEUIL_MONETAIRE:,.0f} XOF)",
+        )
+
+    # ── Seuil espèces (DEPOT via GUICHET ou ATM) ─────────────────────────
+    cumul_especes = (
+        db.query(func.coalesce(func.sum(Transaction.montant), 0))
+        .join(CustomerAccount, Transaction.compte_id == CustomerAccount.id)
+        .filter(
+            CustomerAccount.client_id == customer_id,
+            Transaction.date_op >= cutoff_30d,
+            Transaction.type_op == "DEPOT",
+            Transaction.canal.in_(["GUICHET", "ATM"]),
+        )
+        .scalar() or 0
+    )
+
+    if float(cumul_especes) > SEUIL_ESPECES:
+        create_if_not_open(
+            db=db,
+            client_id=customer_id,
+            type_alerte=ALERT_TYPE_SEUIL_DEPASSE,
+            decision=f"Cumul 30j espèces (GUICHET/ATM) : {float(cumul_especes):,.0f} XOF (seuil {SEUIL_ESPECES:,.0f} XOF)",
+        )
+
+    # ── Détection bénéficiaire groupé (VIREMENT / PAIEMENT) ──────────────
+    if tx.type_op in ("VIREMENT", "PAIEMENT") and tx.destination:
+        check_and_alert(tx, db)
 
     db.commit()
     db.refresh(tx)

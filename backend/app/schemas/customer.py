@@ -150,6 +150,7 @@ class CustomerDetail(BaseModel):
     status: Optional[str]
     date_creation: Optional[datetime]
     updated_at: Optional[datetime]
+    prochaine_revision_kyc: Optional[date] = None
 
     # Relations — nécessaires au ScoringEngine
     documents: List[DocumentSchema] = []

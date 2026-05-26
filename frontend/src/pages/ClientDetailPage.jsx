@@ -11,6 +11,7 @@ import {
   Clock,
   FileCheck,
   Edit,
+  TrendingUp,
 } from "lucide-react";
 
 import { Layout } from "../components/Layout";
@@ -670,6 +671,47 @@ export default function ClientDetailPage() {
             </button>
           ))}
         </div>
+
+        {/* ── Bannières d'alerte ─────────────────────────────────────── */}
+        {isPep && (
+          <div className="flex items-start gap-3 px-4 py-3 bg-[#FEF2F2] border border-[#FECACA] rounded-xl">
+            <AlertTriangle className="w-4 h-4 text-[#DC2626] mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-[#DC2626]">
+                Personne Exposée Politiquement — Vigilance maximale
+              </p>
+              {client.prochaine_revision_kyc && (
+                <p className="text-xs text-[#9CA3AF] mt-1">
+                  Prochaine révision KYC obligatoire :{" "}
+                  <span className="font-semibold text-[#DC2626]">
+                    {formatDate(client.prochaine_revision_kyc)}
+                  </span>
+                  {" "}(GIABA — révision semestrielle)
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {alerts.some(a => a.type_alerte === "SEUIL_DEPASSE" && a.statut === "OPEN") && (
+          <div className="flex items-start gap-3 px-4 py-3 bg-[#FFFBEB] border border-[#FDE68A] rounded-xl">
+            <TrendingUp className="w-4 h-4 text-[#D97706] mt-0.5 flex-shrink-0" />
+            <p className="text-sm font-medium text-[#D97706]">
+              Seuil monétaire dépassé sur les 30 derniers jours.
+              Une déclaration à la CENTIF peut être requise (Art. 26, Loi 2006-14).
+            </p>
+          </div>
+        )}
+
+        {alerts.some(a => a.type_alerte === "BENEFICIAIRE_GROUPEMENT" && a.statut === "OPEN") && (
+          <div className="flex items-start gap-3 px-4 py-3 bg-[#FEF2F2] border border-[#FECACA] rounded-xl">
+            <AlertTriangle className="w-4 h-4 text-[#DC2626] mt-0.5 flex-shrink-0" />
+            <p className="text-sm font-medium text-[#DC2626]">
+              Transfert vers un bénéficiaire partagé avec d'autres clients détecté.
+              Vérifier la cohérence des virements récents.
+            </p>
+          </div>
+        )}
 
         {/* Contenu onglets */}
         {tab === "kyc" && (
