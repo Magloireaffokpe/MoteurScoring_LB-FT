@@ -185,31 +185,12 @@ export default function DashboardPage() {
   );
   const recentAlerts = alertsData?.items || alertsData || [];
 
-  /* Rafraîchir toutes les données */
+  /* Rafraîchir toutes les données (manuel uniquement) */
   const refetchAll = useCallback(() => {
     refetchStats();
     refetchPep();
     refetchAlerts();
   }, [refetchStats, refetchPep, refetchAlerts]);
-
-  /* Rafraîchir au retour sur l'onglet / focus fenêtre */
-  useEffect(() => {
-    const onFocus = () => refetchAll();
-    window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") onFocus();
-    });
-    return () => {
-      window.removeEventListener("focus", onFocus);
-      document.removeEventListener("visibilitychange", onFocus);
-    };
-  }, [refetchAll]);
-
-  /* Rafraîchissement périodique toutes les 30s */
-  useEffect(() => {
-    const interval = setInterval(refetchAll, 30_000);
-    return () => clearInterval(interval);
-  }, [refetchAll]);
 
   /* Pie data */
   const pieData = stats

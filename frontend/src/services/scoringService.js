@@ -26,5 +26,6 @@ export const scoringService = {
   /**
    * POST /api/scoring/rescore-all
    */
-  rescoreAll: () => api.post("/api/scoring/rescore-all").then((r) => r.data),
+  rescoreAll: () =>
+    api.post("/api/scoring/rescore-all", null, { timeout: 300_000 }).then((r) => r.data),
 };
