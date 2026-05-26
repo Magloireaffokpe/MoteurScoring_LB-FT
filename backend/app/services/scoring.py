@@ -393,14 +393,23 @@ class ScoringEngine:
         note = 10.0
 
         # ── a) Ratio montant total / revenus déclarés sur 3 mois ──────────
+        total_3m = float(np.sum(montants))
         if rev > 0:
-            ratio = float(np.sum(montants)) / (rev * 3)
-            if ratio > 5:
+            ratio = total_3m / (rev * 3)
+            if ratio > 10:
+                note = max(note, 95.0)
+            elif ratio > 5:
                 note = max(note, 80.0)
             elif ratio > 3:
                 note = max(note, 60.0)
             elif ratio > 1.5:
                 note = max(note, 40.0)
+
+        # Montant absolu sur 3 mois (indépendant des revenus déclarés)
+        if total_3m > 50_000_000:
+            note = max(note, 90.0)
+        elif total_3m > 20_000_000:
+            note = max(note, 75.0)
 
         # ── a') Ratio 30 jours glissants ───────────────────────────────────
         cutoff_30d = _naive_utc_now() - timedelta(days=30)
@@ -408,12 +417,19 @@ class ScoringEngine:
             tx for tx in transactions
             if (_strip_tz(tx.date_op) or datetime.min) >= cutoff_30d
         ]
-        if tx_30d and rev > 0:
+        if tx_30d:
             total_30d = sum(float(tx.montant) for tx in tx_30d)
-            ratio_30d = total_30d / rev
-            if   ratio_30d > 3: note = max(note, 80.0)
-            elif ratio_30d > 2: note = max(note, 60.0)
-            elif ratio_30d > 1: note = max(note, 40.0)
+            if rev > 0:
+                ratio_30d = total_30d / rev
+                if   ratio_30d > 10: note = max(note, 95.0)
+                elif ratio_30d > 3:  note = max(note, 80.0)
+                elif ratio_30d > 2:  note = max(note, 60.0)
+                elif ratio_30d > 1:  note = max(note, 40.0)
+            # Montant absolu 30j
+            if total_30d > 30_000_000:
+                note = max(note, 90.0)
+            elif total_30d > 10_000_000:
+                note = max(note, 75.0)
             logger.debug(
                 "C3 ratio_30d=%.2f (total=%.0f XOF, rev_mensuel=%.0f XOF)",
                 ratio_30d, total_30d, rev

@@ -150,6 +150,16 @@ function NotificationBell() {
   const fetchingRef = useRef(false);
   const abortRef = useRef(null);
 
+  const ALERT_CATEGORIES = {
+    SCORE_ELEVE:              { label: "Score élevé",           color: "bg-red-100 text-red-700" },
+    PEP_DETECTE:              { label: "PEP détecté",           color: "bg-red-100 text-red-700" },
+    SEUIL_DEPASSE:            { label: "Seuil dépassé",         color: "bg-orange-100 text-orange-700" },
+    BENEFICIAIRE_GROUPEMENT:   { label: "Bénéf. groupement",    color: "bg-red-100 text-red-700" },
+    KYC_INCOMPLET:            { label: "KYC incomplet",         color: "bg-yellow-100 text-yellow-700" },
+    SMURFING_DETECTE:         { label: "Smurfing",              color: "bg-red-100 text-red-700" },
+  };
+  const ALERT_TYPES = Object.keys(ALERT_CATEGORIES);
+
   const fetchHighRiskAlerts = useCallback(() => {
     if (!alertService || typeof alertService.list !== "function") {
       return;
@@ -161,7 +171,7 @@ function NotificationBell() {
     fetchingRef.current = true;
 
     const promise = alertService.list(
-      { limit: 10, statut: "OPEN" },
+      { limit: 50, statut: "OPEN" },
       { silent: true, signal: controller.signal },
     );
     if (!promise || typeof promise.then !== "function") {
@@ -171,9 +181,8 @@ function NotificationBell() {
     promise
       .then((d) => {
         const items = d?.items || d || [];
-        const alertTypes = ["SCORE_ELEVE", "PEP_DETECTE", "SEUIL_DEPASSE", "BENEFICIAIRE_GROUPEMENT", "KYC_INCOMPLET", "SMURFING_DETECTE"];
-        const highRisk = items.filter((a) => alertTypes.includes(a.type_alerte));
-        setAlerts(highRisk);
+        const filtered = items.filter((a) => ALERT_TYPES.includes(a.type_alerte));
+        setAlerts(filtered);
       })
       .catch((err) => {
         if (err?.name === "AbortError") return;
@@ -235,40 +244,55 @@ function NotificationBell() {
         <div className="absolute right-0 mt-2.5 w-80 bg-white rounded-xl border border-[#E5E7EB] shadow-xl z-50 overflow-hidden py-1">
           <div className="px-4 py-2.5 bg-[#F9FAFB] border-b border-[#E5E7EB] flex items-center justify-between">
             <span className="text-xs font-bold text-[#1E3A8A] font-sans">
-              ALERTES RISQUE CRITIQUE
+              ALERTES EN COURS
             </span>
             <span className="bg-[#FEF2F2] text-[#EF4444] text-[10px] font-bold px-2 py-0.5 rounded-full">
-              {alerts.length} en cours
+              {alerts.length} alerte{alerts.length > 1 ? "s" : ""}
             </span>
           </div>
 
-          <div className="max-h-64 overflow-y-auto divide-y divide-[#F3F4F6]">
+          <div className="max-h-72 overflow-y-auto">
             {alerts.length > 0 ? (
-              alerts.map((a) => (
-                <button
-                  key={a.id}
-                  onClick={() => handleAlertClick(a)}
-                  className="w-full text-left px-4 py-3 hover:bg-[#F9FAFB] transition-all flex flex-col gap-1 focus:outline-none"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="text-xs font-bold text-[#111827] font-sans truncate">
-                      {a.customer_name || `Client ${a.client_id?.slice(0, 8)}...`}
-                    </span>
-                    <span className="bg-[#FEF2F2] text-[#EF4444] text-[9px] font-bold px-1.5 py-0.5 rounded">
-                      ÉLEVÉ
-                    </span>
+              (() => {
+                const grouped = {};
+                alerts.forEach((a) => {
+                  const cat = ALERT_CATEGORIES[a.type_alerte] || { label: a.type_alerte, color: "bg-gray-100 text-gray-700" };
+                  if (!grouped[a.type_alerte]) grouped[a.type_alerte] = { ...cat, items: [] };
+                  grouped[a.type_alerte].items.push(a);
+                });
+                return Object.entries(grouped).map(([type, group]) => (
+                  <div key={type}>
+                    <div className="px-4 py-1.5 bg-[#F3F4F6] text-[10px] font-bold text-[#6B7280] uppercase tracking-wider sticky top-0">
+                      {group.label}
+                    </div>
+                    {group.items.map((a) => (
+                      <button
+                        key={a.id}
+                        onClick={() => handleAlertClick(a)}
+                        className="w-full text-left px-4 py-2.5 hover:bg-[#F9FAFB] transition-all flex flex-col gap-0.5 focus:outline-none border-b border-[#F3F4F6] last:border-0"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="text-xs font-bold text-[#111827] font-sans truncate">
+                            {a.customer_name || `Client ${a.client_id?.slice(0, 8)}...`}
+                          </span>
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${group.color}`}>
+                            Haut
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-[#6B7280] font-sans leading-relaxed line-clamp-2">
+                          {a.decision || a.description || ""}
+                        </p>
+                        <span className="text-[9px] text-[#9CA3AF] font-sans">
+                          {formatDatetime(a.date_creation)}
+                        </span>
+                      </button>
+                    ))}
                   </div>
-                  <p className="text-[11px] text-[#6B7280] font-sans leading-relaxed">
-                    {a.description || "Un score de risque élevé a été calculé pour ce client."}
-                  </p>
-                  <span className="text-[10px] text-[#9CA3AF] font-sans">
-                    {formatDatetime(a.date_creation)}
-                  </span>
-                </button>
-              ))
+                ));
+              })()
             ) : (
               <div className="py-8 px-4 text-center text-[#9CA3AF] text-xs font-sans">
-                Aucune alerte de risque critique en cours.
+                Aucune alerte en cours.
               </div>
             )}
           </div>

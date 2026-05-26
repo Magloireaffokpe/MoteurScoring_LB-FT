@@ -161,7 +161,7 @@ def create_transaction(
         .scalar() or 0
     )
 
-    if float(cumul_global) > seuil_global:
+    if float(cumul_global) >= seuil_global:
         create_if_not_open(
             db=db,
             client_id=customer_id,
@@ -182,7 +182,7 @@ def create_transaction(
         .scalar() or 0
     )
 
-    if float(cumul_especes) > seuil_especes:
+    if float(cumul_especes) >= seuil_especes:
         create_if_not_open(
             db=db,
             client_id=customer_id,
