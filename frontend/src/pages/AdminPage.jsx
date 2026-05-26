@@ -1293,6 +1293,7 @@ function CountriesSection() {
   };
 
   const handleAdd = async (e) => {
+    console.log("[DEBUG] handleAdd called", e.type, form);
     e.preventDefault();
     if (!form.code_iso.trim() || !form.name.trim()) {
       toast.error("Code ISO et nom requis");
@@ -1329,7 +1330,7 @@ function CountriesSection() {
       <Card
         title={`Pays référentiels (${countries.length})`}
         action={
-          <Button size="sm" onClick={() => setShowForm(!showForm)}>
+          <Button size="sm" onClick={() => { console.log("[DEBUG] toggle showForm", showForm); setShowForm(!showForm); }}>
             <Plus className="w-3 h-3" /> Ajouter un pays
           </Button>
         }
