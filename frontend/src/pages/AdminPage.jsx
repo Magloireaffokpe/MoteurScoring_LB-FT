@@ -1293,7 +1293,6 @@ function CountriesSection() {
   };
 
   const handleAdd = async (e) => {
-    console.log("[DEBUG] handleAdd called", e.type, form);
     e.preventDefault();
     if (!form.code_iso.trim() || !form.name.trim()) {
       toast.error("Code ISO et nom requis");
@@ -1330,7 +1329,7 @@ function CountriesSection() {
       <Card
         title={`Pays référentiels (${countries.length})`}
         action={
-          <Button size="sm" onClick={() => { console.log("[DEBUG] toggle showForm", showForm); setShowForm(!showForm); }}>
+          <Button size="sm" onClick={() => setShowForm(!showForm)}>
             <Plus className="w-3 h-3" /> Ajouter un pays
           </Button>
         }
@@ -1401,68 +1400,66 @@ function CountriesSection() {
         />
       </Card>
 
-      {/* Formulaire ajout */}
-      {showForm && (
-        <Card title="Ajouter un pays">
-          <form onSubmit={handleAdd}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FormInput
-                label="Code ISO"
-                required
-                maxLength={3}
-                value={form.code_iso}
-                onChange={(e) => setForm((f) => ({ ...f, code_iso: e.target.value }))}
-                placeholder="NG"
-                helper="2 ou 3 lettres (ex: BJ, NG, TG)"
+      {/* Modal ajout pays */}
+      <Modal open={showForm} onClose={() => setShowForm(false)} title="Ajouter un pays">
+        <form onSubmit={handleAdd}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <FormInput
+              label="Code ISO"
+              required
+              maxLength={3}
+              value={form.code_iso}
+              onChange={(e) => setForm((f) => ({ ...f, code_iso: e.target.value }))}
+              placeholder="NG"
+              helper="2 ou 3 lettres (ex: BJ, NG, TG)"
+            />
+            <FormInput
+              label="Nom du pays"
+              required
+              value={form.name}
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+              placeholder="Nigeria"
+            />
+          </div>
+          <div className="flex flex-wrap gap-4 mt-4">
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.is_uemoa}
+                onChange={(e) => setForm((f) => ({ ...f, is_uemoa: e.target.checked }))}
+                className="accent-[#1E3A8A]"
               />
-              <FormInput
-                label="Nom du pays"
-                required
-                value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                placeholder="Nigeria"
+              Membre UEMOA
+            </label>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.is_border}
+                onChange={(e) => setForm((f) => ({ ...f, is_border: e.target.checked }))}
+                className="accent-[#DC2626]"
               />
-            </div>
-            <div className="flex flex-wrap gap-4 mt-4">
-              <label className="flex items-center gap-2 text-sm cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={form.is_uemoa}
-                  onChange={(e) => setForm((f) => ({ ...f, is_uemoa: e.target.checked }))}
-                  className="accent-[#1E3A8A]"
-                />
-                Membre UEMOA
-              </label>
-              <label className="flex items-center gap-2 text-sm cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={form.is_border}
-                  onChange={(e) => setForm((f) => ({ ...f, is_border: e.target.checked }))}
-                  className="accent-[#DC2626]"
-                />
-                Zone frontalière
-              </label>
-              <label className="flex items-center gap-2 text-sm cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={form.is_fatf}
-                  onChange={(e) => setForm((f) => ({ ...f, is_fatf: e.target.checked }))}
-                  className="accent-[#DC2626]"
-                />
-                Listé FATF
-              </label>
-            </div>
-            <div className="flex gap-3 mt-4">
-              <Button type="submit">
-                <Plus className="w-3 h-3" /> Ajouter
-              </Button>
-              <Button variant="ghost" onClick={() => setShowForm(false)}>
-                Annuler
-              </Button>
-            </div>
-          </form>
-        </Card>
-      )}
+              Zone frontalière
+            </label>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.is_fatf}
+                onChange={(e) => setForm((f) => ({ ...f, is_fatf: e.target.checked }))}
+                className="accent-[#DC2626]"
+              />
+              Listé FATF
+            </label>
+          </div>
+          <ModalFooter>
+            <Button variant="ghost" onClick={() => setShowForm(false)}>
+              Annuler
+            </Button>
+            <Button type="submit">
+              <Plus className="w-3 h-3" /> Ajouter
+            </Button>
+          </ModalFooter>
+        </form>
+      </Modal>
     </div>
   );
 }

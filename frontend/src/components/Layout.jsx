@@ -260,8 +260,9 @@ function NotificationBell() {
                   if (!grouped[a.type_alerte]) grouped[a.type_alerte] = { ...cat, items: [] };
                   grouped[a.type_alerte].items.push(a);
                 });
-                return Object.entries(grouped).map(([type, group]) => (
-                  <div key={type}>
+                const keys = Object.keys(grouped);
+                return Object.entries(grouped).map(([type, group], idx) => (
+                  <div key={type} className={idx > 0 ? "border-t border-[#D1D5DB]" : ""}>
                     <div className="px-4 py-1.5 bg-[#F3F4F6] text-[10px] font-bold text-[#6B7280] uppercase tracking-wider sticky top-0">
                       {group.label}
                     </div>
