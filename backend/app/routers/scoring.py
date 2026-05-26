@@ -36,6 +36,7 @@ import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user, require_compliance_or_admin
@@ -167,7 +168,7 @@ def _create_fine_alerts(
     points de scoring (scoring initial, rescore unitaire, rescore global).
 
     Alertes créées :
-      • PEP_ACTIF / PEP_ANCIEN  — selon la note brute C5 (0 | 50 | 100)
+      • PEP_DETECTE  — selon la note brute C5 (0 | 50 | 100)
       • SMURFING                 — si smurfing_detected == True
 
     :param db:            Session SQLAlchemy active.
@@ -327,8 +328,8 @@ def _run_scoring(
     description=(
         "Calcule le score LBC/FT d'un client selon les 6 critères pondérés (C1–C6). "
         "Crée automatiquement une alerte **SCORE_ELEVE** si `global_score ≥ 67`. "
-        "Crée également des alertes fines : **PEP_ACTIF**, **PEP_ANCIEN**, "
-        "**SMURFING** selon les signaux détectés. "
+         "Crée également des alertes fines : **PEP_DETECTE**, **SMURFING_DETECTE** "
+        "selon les signaux détectés. "
         "Marque l'ancien score `is_current=False`. "
         "Action journalisée dans `audit_logs`. "
         "\n\nRôles autorisés : **admin**, **compliance_officer**."
@@ -535,56 +536,78 @@ async def rescore_all_customers(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_compliance_or_admin),
 ) -> RescoreAllResponse:
-    customers = db.query(Customer).all()
+    BATCH_SIZE = 20
+    total = db.query(func.count(Customer.id)).scalar() or 0
     rescored_count = 0
     critical_count = 0
 
-    for customer in customers:
-        try:
-            with db.begin_nested():
-                # ── Calcul du score ───────────────────────────────────────
-                engine = ScoringEngine(db)
-                result = engine.calculate_score(customer.id)
+    # Engine partagé : _load_weights / _load_thresholds appelés 1 seule fois
+    shared_engine = ScoringEngine(db)
 
-                # ── Archiver l'ancien score courant ───────────────────────
-                _mark_previous_scores_as_not_current(db, customer.id)
+    offset = 0
+    while offset < total:
+        batch = (
+            db.query(Customer)
+            .order_by(Customer.id)
+            .offset(offset)
+            .limit(BATCH_SIZE)
+            .all()
+        )
+        if not batch:
+            break
 
-                # ── Enregistrer le nouveau score ──────────────────────────
-                new_score = Score(
-                    client_id=customer.id,
-                    score_global=result["global_score"],
-                    detail_json=result["detail_json"],
-                    categorie=result["risk_category"],
-                    is_current=True,
-                    calcule_par="AUTOMATED",
-                )
-                db.add(new_score)
-                db.flush()
+        for customer in batch:
+            try:
+                with db.begin_nested():
+                    result = shared_engine.calculate_score(customer.id)
 
-                # ── Alerte générique SCORE_ELEVE ──────────────────────────
-                create_score_alert_if_needed(
-                    db=db,
-                    customer_id=customer.id,
-                    global_score=result["global_score"],
-                    skip_if_open=True,  # rescore global → jamais de doublons
-                )
+                    _mark_previous_scores_as_not_current(db, customer.id)
 
-                # ── Alertes fines PEP / smurfing / card testing [Int-2] ───
-                _create_fine_alerts(
-                    db=db,
-                    customer_id=customer.id,
-                    result=result,
-                    skip_if_open=True,  # rescore global → jamais de doublons
-                )
+                    new_score = Score(
+                        client_id=customer.id,
+                        score_global=result["global_score"],
+                        detail_json=result["detail_json"],
+                        categorie=result["risk_category"],
+                        is_current=True,
+                        calcule_par="AUTOMATED",
+                    )
+                    db.add(new_score)
+                    db.flush()
 
-                rescored_count += 1
-                if result["global_score"] >= 67:
-                    critical_count += 1
+                    create_score_alert_if_needed(
+                        db=db,
+                        customer_id=customer.id,
+                        global_score=result["global_score"],
+                        skip_if_open=True,
+                    )
 
-        except Exception as exc:
-            logger.error("Erreur rescore global — client %s : %s", customer.id, exc)
-            db.expire_all()  # Nettoie l'identity map après rollback du savepoint
-            continue
+                    _create_fine_alerts(
+                        db=db,
+                        customer_id=customer.id,
+                        result=result,
+                        skip_if_open=True,
+                    )
+
+                    rescored_count += 1
+                    if result["global_score"] >= 67:
+                        critical_count += 1
+
+            except Exception as exc:
+                logger.error("Erreur rescore global — client %s : %s", customer.id, exc)
+                db.expire_all()
+                continue
+
+        # Commit intermédiaire : libère la transaction tous les N clients
+        db.commit()
+
+        logger.info(
+            "Rescore partiel — %d/%d clients traités (%d critiques)",
+            min(offset + BATCH_SIZE, total),
+            total,
+            critical_count,
+        )
+
+        offset += BATCH_SIZE
 
     # Journalisation globale de l'opération
     audit_service.log_action(
@@ -594,6 +617,7 @@ async def rescore_all_customers(
         ip_address=_get_client_ip(http_request),
     )
 
+    # Dernier commit pour les logs d'audit
     db.commit()
 
     logger.info(

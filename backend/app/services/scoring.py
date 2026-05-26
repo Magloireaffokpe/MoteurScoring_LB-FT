@@ -220,7 +220,11 @@ class ScoringEngine:
         Le champ weight est stocké en pourcentage entier (20, 25, 10…).
         On normalise par la somme totale pour obtenir des fractions décimales
         robustes même si un critère est ajouté ou modifié en base.
+
+        Skip si déjà chargé (optimisation rescore global).
         """
+        if self._weights:
+            return
         rows = self.db.query(
             ScoringCriteria
         ).all()  # [Fix 1] : plus de filtre is_active
@@ -241,7 +245,11 @@ class ScoringEngine:
         """
         Charge les seuils de catégorie depuis risk_thresholds.
         Colonnes : score_min / score_max (schéma Marcos — seed_db.py).
+
+        Skip si déjà chargé (optimisation rescore global).
         """
+        if self._thresholds:
+            return
         rows = self.db.query(RiskThreshold).order_by(RiskThreshold.score_min).all()
         if rows:
             self._thresholds = [
@@ -599,15 +607,18 @@ class ScoringEngine:
         return duplicate_groups
 
     def _get_risk_country_ids(self) -> set[int]:
-        """Retourne les IDs des pays frontaliers ou listés FATF."""
-        rows = (
-            self.db.query(Country.id)
-            .filter(
-                (Country.is_border == True) | (Country.is_fatf == True)  # noqa: E712
+        """Retourne les IDs des pays frontaliers ou listés FATF.
+        Cache le résultat (les données ne changent pas en cours de rescore)."""
+        if not hasattr(self, "_risk_country_ids_cache"):
+            rows = (
+                self.db.query(Country.id)
+                .filter(
+                    (Country.is_border == True) | (Country.is_fatf == True)  # noqa: E712
+                )
+                .all()
             )
-            .all()
-        )
-        return {r.id for r in rows}
+            self._risk_country_ids_cache = {r.id for r in rows}
+        return self._risk_country_ids_cache
 
     # ──────────────────────────────────────────────────────────────────────
     # C4 — Ancienneté & fidélité (poids 10 %)

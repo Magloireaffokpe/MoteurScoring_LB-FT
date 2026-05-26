@@ -20,15 +20,25 @@ from app.services.alert_service import (
     create_score_alert_if_needed,
     create_pep_alert_if_needed,
     create_smurfing_alert_if_needed,
+    create_kyc_alert_if_needed,
     create_if_not_open,
     ALERT_TYPE_SEUIL_DEPASSE,
 )
 from app.services.beneficiaire_service import check_and_alert
-from app.config import SEUIL_MONETAIRE, SEUIL_ESPECES, FENETRE_CUMUL_JOURS
+from app.models.customers import Customer
+from app.models.settings import AppSetting
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _get_setting(db: Session, key: str, default: float) -> float:
+    """Lit un paramètre depuis la DB AppSetting, ou retourne la valeur par défaut."""
+    row = db.query(AppSetting).filter(AppSetting.key == key).first()
+    if row:
+        return float(row.value)
+    return default
 
 
 @router.get("/customers/{customer_id}/transactions",
@@ -124,6 +134,9 @@ def create_transaction(
         create_pep_alert_if_needed(db, customer_id, result["c5_score"], skip_if_open=True)
         if result["smurfing_detected"]:
             create_smurfing_alert_if_needed(db, customer_id, skip_if_open=True)
+        customer = db.query(Customer).filter(Customer.id == customer_id).first()
+        if customer:
+            create_kyc_alert_if_needed(db, customer_id, customer.kyc_completion or 0, skip_if_open=True)
 
         log_action(db, str(current_user.id), ACTION_SCORING_RESCORE,
                    resource_type="customer", resource_id=str(customer_id),
@@ -132,7 +145,11 @@ def create_transaction(
         logger.error("Auto-rescore failed after transaction: %s", exc)
 
     # ── Détection seuil monétaire (toutes opérations) ────────────────────
-    cutoff_30d = _naive_utc_now() - timedelta(days=FENETRE_CUMUL_JOURS)
+    fenetre = int(_get_setting(db, "FENETRE_CUMUL_JOURS", 30))
+    seuil_global = _get_setting(db, "SEUIL_MONETAIRE", 10_000_000)
+    seuil_especes = _get_setting(db, "SEUIL_ESPECES", 3_000_000)
+
+    cutoff_30d = _naive_utc_now() - timedelta(days=fenetre)
 
     cumul_global = (
         db.query(func.coalesce(func.sum(Transaction.montant), 0))
@@ -144,12 +161,12 @@ def create_transaction(
         .scalar() or 0
     )
 
-    if float(cumul_global) > SEUIL_MONETAIRE:
+    if float(cumul_global) > seuil_global:
         create_if_not_open(
             db=db,
             client_id=customer_id,
             type_alerte=ALERT_TYPE_SEUIL_DEPASSE,
-            decision=f"Cumul 30j toutes opérations : {float(cumul_global):,.0f} XOF (seuil {SEUIL_MONETAIRE:,.0f} XOF)",
+            decision=f"Cumul 30j toutes opérations : {float(cumul_global):,.0f} XOF (seuil {seuil_global:,.0f} XOF)",
         )
 
     # ── Seuil espèces (DEPOT via GUICHET ou ATM) ─────────────────────────
@@ -165,12 +182,12 @@ def create_transaction(
         .scalar() or 0
     )
 
-    if float(cumul_especes) > SEUIL_ESPECES:
+    if float(cumul_especes) > seuil_especes:
         create_if_not_open(
             db=db,
             client_id=customer_id,
             type_alerte=ALERT_TYPE_SEUIL_DEPASSE,
-            decision=f"Cumul 30j espèces (GUICHET/ATM) : {float(cumul_especes):,.0f} XOF (seuil {SEUIL_ESPECES:,.0f} XOF)",
+            decision=f"Cumul 30j espèces (GUICHET/ATM) : {float(cumul_especes):,.0f} XOF (seuil {seuil_especes:,.0f} XOF)",
         )
 
     # ── Détection bénéficiaire groupé (VIREMENT / PAIEMENT) ──────────────

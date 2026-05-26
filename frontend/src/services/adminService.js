@@ -98,6 +98,21 @@ export const adminService = {
   getAuditLogs: (params) =>
     api.get("/api/admin/audit-logs", { params }).then((r) => r.data),
 
+  // ── Paramètres applicatifs (seuils monétaires) ─────────────────────────────
+  /**
+   * GET /api/admin/settings
+   * Retourne { items: [{ id, key, value, label, description, updated_at }] }
+   */
+  getSettings: () =>
+    api.get("/api/admin/settings").then((r) => r.data),
+
+  /**
+   * PUT /api/admin/settings/{key}
+   * Body : { value: number }
+   */
+  updateSetting: (key, body) =>
+    api.put(`/api/admin/settings/${key}`, body).then((r) => r.data),
+
   // ── Référentiels (Pays & Zones) ───────────────────────────────────────────
   /**
    * POST /api/countries
@@ -106,6 +121,13 @@ export const adminService = {
    */
   createCountry: (body) =>
     api.post("/api/countries", body).then((r) => r.data),
+
+  /**
+   * PUT /api/countries/{id}
+   * Body : { name?, is_uemoa?, is_border?, is_fatf? }
+   */
+  updateCountry: (id, body) =>
+    api.put(`/api/countries/${id}`, body).then((r) => r.data),
 
   /**
    * POST /api/risk-zones

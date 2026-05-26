@@ -11,6 +11,8 @@ import {
   Shield,
   AlertTriangle,
   UserPlus,
+  DollarSign,
+  Globe,
 } from "lucide-react";
 import { Badge } from "../components/Badge";
 import { Layout } from "../components/Layout";
@@ -43,6 +45,8 @@ import toast from "react-hot-toast";
 const TABS = [
   { id: "criteria", label: "Poids critères", icon: Settings },
   { id: "thresholds", label: "Seuils risque", icon: Shield },
+  { id: "monetary", label: "Seuils monétaires", icon: DollarSign },
+  { id: "countries", label: "Pays à risque", icon: Globe },
   { id: "pep", label: "Gestion PEP", icon: Users },
   { id: "agents", label: "Gestion agents", icon: UserPlus },
   { id: "audit", label: "Audit logs", icon: FileText },
@@ -1241,6 +1245,344 @@ function AgentsSection() {
 
 
 /* ─────────────────────────────────────────────────────────────────────
+   Section 6 — Pays à risque
+───────────────────────────────────────────────────────────────────── */
+function CountriesSection() {
+  const [countries, setCountries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({
+    code_iso: "",
+    name: "",
+    is_uemoa: false,
+    is_border: false,
+    is_fatf: false,
+  });
+
+  const loadCountries = useCallback(() => {
+    setLoading(true);
+    referentialService
+      .countries()
+      .then(setCountries)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    loadCountries();
+  }, [loadCountries]);
+
+  const handleToggle = async (country, field) => {
+    setSaving(country.id);
+    try {
+      await adminService.updateCountry(country.id, {
+        [field]: !country[field],
+      });
+      setCountries((prev) =>
+        prev.map((c) =>
+          c.id === country.id ? { ...c, [field]: !c[field] } : c,
+        ),
+      );
+      toast.success(`${country.name} — ${field} mis à jour`);
+    } catch {
+      toast.error("Mise à jour échouée");
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const handleAdd = async (e) => {
+    e.preventDefault();
+    if (!form.code_iso.trim() || !form.name.trim()) {
+      toast.error("Code ISO et nom requis");
+      return;
+    }
+    try {
+      await adminService.createCountry({
+        code_iso: form.code_iso.trim().toUpperCase(),
+        name: form.name.trim(),
+        is_uemoa: form.is_uemoa,
+        is_border: form.is_border,
+        is_fatf: form.is_fatf,
+      });
+      toast.success(`Pays ${form.name} ajouté`);
+      setForm({ code_iso: "", name: "", is_uemoa: false, is_border: false, is_fatf: false });
+      setShowForm(false);
+      loadCountries();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Erreur création");
+    }
+  };
+
+  if (loading) return <Loader />;
+
+  const FLAG_LABELS = {
+    is_uemoa: { label: "UEMOA", color: "bg-[#ECFDF5] text-[#059669]" },
+    is_border: { label: "Frontalier", color: "bg-[#FEF2F2] text-[#DC2626]" },
+    is_fatf: { label: "FATF", color: "bg-[#FEF2F2] text-[#DC2626]" },
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* Liste des pays */}
+      <Card
+        title={`Pays référentiels (${countries.length})`}
+        action={
+          <Button size="sm" onClick={() => setShowForm(!showForm)}>
+            <Plus className="w-3 h-3" /> Ajouter un pays
+          </Button>
+        }
+        noPad
+      >
+        <Table
+          columns={[
+            { key: "code_iso", label: "Code" },
+            {
+              key: "name",
+              label: "Pays",
+              render: (v) => <span className="font-semibold">{v}</span>,
+            },
+            {
+              key: "is_uemoa",
+              label: "UEMOA",
+              render: (v, row) => (
+                <button
+                  onClick={() => handleToggle(row, "is_uemoa")}
+                  disabled={saving === row.id}
+                  className={clsx(
+                    "px-2 py-0.5 rounded text-[11px] font-semibold transition-opacity",
+                    v ? "bg-[#ECFDF5] text-[#059669]" : "bg-[#F3F4F6] text-[#9CA3AF]",
+                    saving === row.id && "opacity-50",
+                  )}
+                >
+                  {v ? "Oui" : "Non"}
+                </button>
+              ),
+            },
+            {
+              key: "is_border",
+              label: "Frontalier",
+              render: (v, row) => (
+                <button
+                  onClick={() => handleToggle(row, "is_border")}
+                  disabled={saving === row.id}
+                  className={clsx(
+                    "px-2 py-0.5 rounded text-[11px] font-semibold transition-opacity",
+                    v ? "bg-[#FEF2F2] text-[#DC2626]" : "bg-[#F3F4F6] text-[#9CA3AF]",
+                    saving === row.id && "opacity-50",
+                  )}
+                >
+                  {v ? "Oui" : "Non"}
+                </button>
+              ),
+            },
+            {
+              key: "is_fatf",
+              label: "FATF",
+              render: (v, row) => (
+                <button
+                  onClick={() => handleToggle(row, "is_fatf")}
+                  disabled={saving === row.id}
+                  className={clsx(
+                    "px-2 py-0.5 rounded text-[11px] font-semibold transition-opacity",
+                    v ? "bg-[#FEF2F2] text-[#DC2626]" : "bg-[#F3F4F6] text-[#9CA3AF]",
+                    saving === row.id && "opacity-50",
+                  )}
+                >
+                  {v ? "Oui" : "Non"}
+                </button>
+              ),
+            },
+          ]}
+          data={countries}
+          emptyText="Aucun pays référentiel."
+        />
+      </Card>
+
+      {/* Formulaire ajout */}
+      {showForm && (
+        <Card title="Ajouter un pays">
+          <form onSubmit={handleAdd}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormInput
+                label="Code ISO"
+                required
+                maxLength={3}
+                value={form.code_iso}
+                onChange={(e) => setForm((f) => ({ ...f, code_iso: e.target.value }))}
+                placeholder="NG"
+                helper="2 ou 3 lettres (ex: BJ, NG, TG)"
+              />
+              <FormInput
+                label="Nom du pays"
+                required
+                value={form.name}
+                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder="Nigeria"
+              />
+            </div>
+            <div className="flex flex-wrap gap-4 mt-4">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.is_uemoa}
+                  onChange={(e) => setForm((f) => ({ ...f, is_uemoa: e.target.checked }))}
+                  className="accent-[#1E3A8A]"
+                />
+                Membre UEMOA
+              </label>
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.is_border}
+                  onChange={(e) => setForm((f) => ({ ...f, is_border: e.target.checked }))}
+                  className="accent-[#DC2626]"
+                />
+                Zone frontalière
+              </label>
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.is_fatf}
+                  onChange={(e) => setForm((f) => ({ ...f, is_fatf: e.target.checked }))}
+                  className="accent-[#DC2626]"
+                />
+                Listé FATF
+              </label>
+            </div>
+            <div className="flex gap-3 mt-4">
+              <Button type="submit">
+                <Plus className="w-3 h-3" /> Ajouter
+              </Button>
+              <Button variant="ghost" onClick={() => setShowForm(false)}>
+                Annuler
+              </Button>
+            </div>
+          </form>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────
+   Section 7 — Seuils monétaires
+───────────────────────────────────────────────────────────────────── */
+function MonetarySection() {
+  const [settings, setSettings] = useState([]);
+  const [local, setLocal] = useState({});
+  const [saving, setSaving] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    adminService
+      .getSettings()
+      .then((d) => {
+        const items = d.items || [];
+        setSettings(items);
+        setLocal(
+          Object.fromEntries(items.map((s) => [s.key, s.value])),
+        );
+      })
+      .catch(() => toast.error("Erreur chargement des paramètres"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleSave = async (key) => {
+    setSaving(key);
+    try {
+      await adminService.updateSetting(key, { value: Number(local[key]) });
+      toast.success(`${key} mis à jour`);
+    } catch {
+      toast.error("Mise à jour échouée");
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  if (loading) return <Loader />;
+
+  const LABELS = {
+    SEUIL_MONETAIRE: {
+      title: "Seuil global (toutes opérations)",
+      desc: "Cumul 30j glissants DEPOT + RETRAIT + VIREMENT + PAIEMENT. Alerte SEUIL_DEPASSE.",
+      unit: "FCFA",
+      step: 100000,
+      min: 100000,
+    },
+    SEUIL_ESPECES: {
+      title: "Seuil espèces (GUICHET / ATM)",
+      desc: "Cumul 30j des DEPOT via GUICHET ou ATM uniquement. Alerte SEUIL_DEPASSE.",
+      unit: "FCFA",
+      step: 50000,
+      min: 100000,
+    },
+    FENETRE_CUMUL_JOURS: {
+      title: "Fenêtre de cumul",
+      desc: "Nombre de jours pour le calcul du cumul glissant. Défaut : 30 jours.",
+      unit: "jours",
+      step: 1,
+      min: 1,
+    },
+  };
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+      {settings.map((s) => {
+        const meta = LABELS[s.key] || {};
+        return (
+          <div
+            key={s.key}
+            className="bg-white rounded-xl border border-[#E5E7EB] p-5 space-y-4"
+          >
+            <div>
+              <span className="font-mono text-[11px] font-semibold text-[#1E3A8A] bg-[#EEF2FF] px-2 py-0.5 rounded">
+                {s.key}
+              </span>
+              <h3 className="text-sm font-bold text-[#111827] mt-2">{meta.title}</h3>
+              <p className="text-xs text-[#6B7280] mt-1 leading-relaxed">{meta.desc}</p>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-[#374151] block mb-1">
+                Valeur {s.key === "FENETRE_CUMUL_JOURS" ? "(jours)" : "(FCFA)"}
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  min={meta.min}
+                  step={meta.step}
+                  value={local[s.key] ?? ""}
+                  onChange={(e) =>
+                    setLocal((l) => ({ ...l, [s.key]: e.target.value }))
+                  }
+                  className="flex-1 px-3 py-2 rounded-xl border border-[#E5E7EB] text-sm font-mono font-bold
+                             focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]/30"
+                />
+                <Button
+                  size="sm"
+                  loading={saving === s.key}
+                  onClick={() => handleSave(s.key)}
+                >
+                  <Save className="w-3 h-3" />
+                </Button>
+              </div>
+              {s.updated_at && (
+                <p className="text-[10px] text-[#9CA3AF] mt-2">
+                  Dernière modif : {formatDatetime(s.updated_at)}
+                </p>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────
    AdminPage principale
 ───────────────────────────────────────────────────────────────────── */
 export default function AdminPage() {
@@ -1281,6 +1623,8 @@ export default function AdminPage() {
         <div>
           {tab === "criteria" && <CriteriaSection />}
           {tab === "thresholds" && <ThresholdsSection />}
+          {tab === "monetary" && <MonetarySection />}
+          {tab === "countries" && <CountriesSection />}
           {tab === "pep" && <PepSection />}
           {tab === "agents" && <AgentsSection />}
           {tab === "audit" && <AuditSection />}

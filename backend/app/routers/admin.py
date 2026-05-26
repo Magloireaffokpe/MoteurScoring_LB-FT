@@ -14,6 +14,7 @@ from app.models.users import User
 from app.models.audit_logs import AuditLog
 from app.models.pep_list import PepEntry
 from app.models.countries import Country
+from app.models.settings import AppSetting
 from app.schemas.common import MessageResponse
 from app.services.audit_service import log_action
 from app.auth.security import hash_password
@@ -145,6 +146,78 @@ def update_risk_threshold(
     log_action(db, str(current_user.id), "UPDATE_RISK_THRESHOLD",
                ip_address=_get_ip(request))
     return MessageResponse(message=f"Threshold {threshold.category} updated")
+
+
+#  Paramètres applicatifs (seuils monétaires, etc.) 
+
+SETTING_KEYS = {
+    "SEUIL_MONETAIRE": "Seuil global (toutes opérations)",
+    "SEUIL_ESPECES": "Seuil espèces (DEPOT GUICHET/ATM)",
+    "FENETRE_CUMUL_JOURS": "Fenêtre de cumul (jours)",
+}
+
+@router.get("/settings")
+def get_settings(
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin)
+):
+    """
+    Liste tous les paramètres configurables.
+    Retourne les valeurs de la base, ou les valeurs par défaut si absents.
+    """
+    rows = db.query(AppSetting).all()
+    db_map = {r.key: r for r in rows}
+    defaults = {
+        "SEUIL_MONETAIRE": 10_000_000,
+        "SEUIL_ESPECES": 3_000_000,
+        "FENETRE_CUMUL_JOURS": 30,
+    }
+    items = []
+    for key, label in SETTING_KEYS.items():
+        existing = db_map.get(key)
+        items.append({
+            "id": existing.id if existing else None,
+            "key": key,
+            "value": float(existing.value) if existing else defaults[key],
+            "label": label,
+            "description": existing.description if existing else None,
+            "updated_at": existing.updated_at if existing else None,
+        })
+    return {"items": items}
+
+
+class SettingUpdate(PydanticBase):
+    value: float
+
+
+@router.put("/settings/{key}")
+def update_setting(
+    key: str,
+    data: SettingUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin)
+):
+    """Met à jour un paramètre applicatif (SEUIL_MONETAIRE, SEUIL_ESPECES, FENETRE_CUMUL_JOURS)."""
+    if key not in SETTING_KEYS:
+        raise HTTPException(status_code=422, detail=f"Clé inconnue : {key}")
+
+    if data.value <= 0:
+        raise HTTPException(status_code=422, detail="La valeur doit être strictement positive")
+
+    setting = db.query(AppSetting).filter(AppSetting.key == key).first()
+    if setting:
+        setting.value = data.value
+    else:
+        setting = AppSetting(key=key, value=data.value, label=SETTING_KEYS[key])
+        db.add(setting)
+
+    db.commit()
+
+    log_action(db, str(current_user.id), "UPDATE_SETTING",
+               ip_address=_get_ip(request))
+
+    return {"key": key, "value": data.value, "label": SETTING_KEYS[key]}
 
 
 #  Users 

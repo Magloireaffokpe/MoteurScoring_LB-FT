@@ -171,9 +171,8 @@ function NotificationBell() {
     promise
       .then((d) => {
         const items = d?.items || d || [];
-        const highRisk = items.filter(
-          (a) => a.type_alerte === "SCORE_ELEVE" || a.type_alerte === "PEP_DETECTE",
-        );
+        const alertTypes = ["SCORE_ELEVE", "PEP_DETECTE", "SEUIL_DEPASSE", "BENEFICIAIRE_GROUPEMENT", "KYC_INCOMPLET", "SMURFING_DETECTE"];
+        const highRisk = items.filter((a) => alertTypes.includes(a.type_alerte));
         setAlerts(highRisk);
       })
       .catch((err) => {
@@ -204,8 +203,13 @@ function NotificationBell() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleAlertClick = (alert) => {
+  const handleAlertClick = async (alert) => {
     setIsOpen(false);
+    try {
+      await alertService.update(alert.id, { statut: "UNDER_REVIEW" });
+    } catch {
+      // silencieux — la navigation se fait même si l'update échoue
+    }
     navigate(`/clients/${alert.client_id}`);
   };
 

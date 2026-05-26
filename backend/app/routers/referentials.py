@@ -17,6 +17,12 @@ class CountryCreate(BaseModel):
     is_border: Optional[bool] = False
     is_fatf: Optional[bool] = False
 
+class CountryUpdate(BaseModel):
+    name: Optional[str] = None
+    is_uemoa: Optional[bool] = None
+    is_border: Optional[bool] = None
+    is_fatf: Optional[bool] = None
+
 class CountrySchema(BaseModel):
     id: int
     code_iso: str
@@ -63,6 +69,31 @@ def create_country(
         is_fatf=data.is_fatf
     )
     db.add(country)
+    db.commit()
+    db.refresh(country)
+    return country
+
+@router.put("/countries/{country_id}", response_model=CountrySchema)
+def update_country(
+    country_id: int,
+    data: CountryUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin)
+):
+    """Met à jour un pays (flags is_border, is_fatf, is_uemoa, etc.)."""
+    country = db.query(Country).filter(Country.id == country_id).first()
+    if not country:
+        raise HTTPException(status_code=404, detail="Country not found")
+
+    if data.name is not None:
+        country.name = data.name
+    if data.is_uemoa is not None:
+        country.is_uemoa = data.is_uemoa
+    if data.is_border is not None:
+        country.is_border = data.is_border
+    if data.is_fatf is not None:
+        country.is_fatf = data.is_fatf
+
     db.commit()
     db.refresh(country)
     return country

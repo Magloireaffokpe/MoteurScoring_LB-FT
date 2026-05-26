@@ -13,6 +13,7 @@ from app.models.alerts import Alert
 from app.models.audit_logs import AuditLog
 from app.models.pep_list import PepEntry
 from app.models.scores import Score
+from app.models.settings import AppSetting
 
 __all__ = [
     "Country",
@@ -29,4 +30,5 @@ __all__ = [
     "AuditLog",
     "PepEntry",
     "Score",
+    "AppSetting",
 ]

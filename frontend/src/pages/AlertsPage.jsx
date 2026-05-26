@@ -30,10 +30,11 @@ const STATUS_OPTS = [
 const TYPE_OPTS = [
   { v: "", l: "Tous types" },
   { v: "SCORE_ELEVE", l: "Score élevé" },
-  { v: "KYC_INCOMPLET", l: "KYC incomplet" },
   { v: "PEP_DETECTE", l: "PEP détecté" },
-  { v: "SEUIL_DEPASSE", l: "Seuil monétaire dépassé" },
-  { v: "BENEFICIAIRE_GROUPEMENT", l: "Bénéficiaire suspect" },
+  { v: "SEUIL_DEPASSE", l: "Seuil dépassé" },
+  { v: "BENEFICIAIRE_GROUPEMENT", l: "Bénéficiaire groupement" },
+  { v: "KYC_INCOMPLET", l: "KYC incomplet" },
+  { v: "SMURFING_DETECTE", l: "Smurfing" },
 ];
 
 const RISK_OPTS = [
@@ -196,12 +197,8 @@ export default function AlertsPage() {
       key: "niveau",
       label: "Niveau",
       render: (_, r) => {
-        const cat =
-          r.type_alerte === "SCORE_ELEVE"
-            ? "ÉLEVÉ"
-            : r.type_alerte === "PEP_DETECTE"
-              ? "ÉLEVÉ"
-              : "MOYEN";
+        const highTypes = ["SCORE_ELEVE", "PEP_DETECTE", "SEUIL_DEPASSE", "BENEFICIAIRE_GROUPEMENT", "SMURFING_DETECTE"];
+        const cat = highTypes.includes(r.type_alerte) ? "ÉLEVÉ" : "MOYEN";
         return <Badge type={cat}>{cat}</Badge>;
       },
     },
