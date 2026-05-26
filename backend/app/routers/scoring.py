@@ -583,6 +583,7 @@ async def rescore_all_customers(
 
         except Exception as exc:
             logger.error("Erreur rescore global — client %s : %s", customer.id, exc)
+            db.expire_all()  # Nettoie l'identity map après rollback du savepoint
             continue
 
     # Journalisation globale de l'opération

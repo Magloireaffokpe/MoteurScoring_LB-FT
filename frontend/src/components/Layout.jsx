@@ -147,13 +147,25 @@ function NotificationBell() {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
   const navigate = useNavigate();
+  const fetchingRef = useRef(false);
+  const abortRef = useRef(null);
 
   const fetchHighRiskAlerts = useCallback(() => {
     if (!alertService || typeof alertService.list !== "function") {
       return;
     }
-    const promise = alertService.list({ limit: 10, statut: "OPEN" }, { silent: true });
+    if (fetchingRef.current) return;
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    fetchingRef.current = true;
+
+    const promise = alertService.list(
+      { limit: 10, statut: "OPEN" },
+      { silent: true, signal: controller.signal },
+    );
     if (!promise || typeof promise.then !== "function") {
+      fetchingRef.current = false;
       return;
     }
     promise
@@ -165,14 +177,21 @@ function NotificationBell() {
         setAlerts(highRisk);
       })
       .catch((err) => {
+        if (err?.name === "AbortError") return;
         console.error("Erreur de récupération des alertes pour la cloche", err);
+      })
+      .finally(() => {
+        fetchingRef.current = false;
       });
   }, []);
 
   useEffect(() => {
     fetchHighRiskAlerts();
     const interval = setInterval(fetchHighRiskAlerts, 30000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      if (abortRef.current) abortRef.current.abort();
+    };
   }, [fetchHighRiskAlerts]);
 
   useEffect(() => {
