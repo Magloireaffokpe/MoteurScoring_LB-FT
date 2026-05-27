@@ -26,7 +26,27 @@ TEST_DATABASE_URL = os.getenv(
 
 # Adapte les types PostgreSQL → SQLite pour les tests
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB as PG_JSONB
-from sqlalchemy import String, Text
+from sqlalchemy import Uuid, JSON, String, TypeDecorator
+import uuid as _uuid
+
+
+class _CompatUUID(TypeDecorator):
+    """UUID compatible avec SQLite — accepte uuid.UUID et str."""
+    impl = String(36)
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is not None:
+            return str(value)
+        return value
+
+    def process_result_value(self, value, dialect):
+        if value is not None:
+            return _uuid.UUID(value)
+        return value
+
+    def visit_name(self):
+        return "UUID"
 
 @event.listens_for(Base.metadata, "before_create")
 def _replace_pg_types(target, connection, **kw):
@@ -34,9 +54,9 @@ def _replace_pg_types(target, connection, **kw):
         for table in target.tables.values():
             for col in table.columns:
                 if isinstance(col.type, PG_UUID):
-                    col.type = String(36)
+                    col.type = _CompatUUID()
                 elif isinstance(col.type, PG_JSONB):
-                    col.type = Text
+                    col.type = JSON()
 
 # ── Générateur de code_iso unique ──────────────────────────────────────────────
 _generated_iso_codes = set()

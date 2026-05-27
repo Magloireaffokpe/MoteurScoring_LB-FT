@@ -23,9 +23,7 @@
    - [C6 — Cohérence KYC](#c6--cohérence-kyc-poids-10-)
 5. [Calcul du score global](#5-calcul-du-score-global)
 6. [Détection du smurfing — Anti faux-positifs](#6-détection-du-smurfing--anti-faux-positifs)
-7. [Détections comportementales complémentaires](#7-détections-comportementales-complémentaires)
-   - [Card testing](#71-card-testing)
-   - [Transactions dupliquées / replay](#72-transactions-dupliquées--replay)
+7. [Transactions dupliquées / replay](#7-transactions-dupliquées--replay)
 8. [Catégorisation du risque](#8-catégorisation-du-risque)
 9. [Système d'alertes](#9-système-dalertes)
 10. [Flux complet d'un appel API](#10-flux-complet-dun-appel-api)
@@ -56,8 +54,8 @@ Score global = Σ (note_brute_Ci × poids_Ci)   pour i ∈ {1..6}
 | 67 – 100 | **ÉLEVÉ**  | Déclaration CENTIF obligatoire, escalade      |
 
 > **Important** : une alerte `SCORE_ELEVE` est créée automatiquement dès
-> que `global_score ≥ 67`. Des alertes fines supplémentaires (PEP, smurfing,
-> card testing) sont créées indépendamment selon les signaux détectés —
+> que `global_score ≥ 67`. Des alertes fines supplémentaires (PEP, smurfing)
+> sont créées indépendamment selon les signaux détectés —
 > voir [section 9](#9-système-dalertes).
 
 ---
@@ -74,8 +72,7 @@ ScoringEngine
 │   ├── _score_c2(customer)               ← note brute C2 (0-100)
 │   ├── _score_c3(customer)               ← note brute C3 (0-100)
 │   │   ├── _detect_smurfing(txs, rev)    ← fractionnement (3 conditions)
-│   │   ├── _detect_duplicates(txs)       ← tx dupliquées / replay [v1.3]
-│   │   └── [card testing inline]         ← micro-tx carte [v1.3]
+│   │   └── _detect_duplicates(txs)       ← tx dupliquées / replay [v1.3]
 │   ├── _score_c4(customer)               ← note brute C4 (0-100)
 │   ├── _score_c5(customer)               ← note brute C5 (0/50/100) [v1.3]
 │   ├── _score_c6(customer)               ← note brute C6 (0-100)
@@ -84,7 +81,7 @@ ScoringEngine
 │
 │   Champs retournés (v1.3 — non-breaking) :
 │     global_score, risk_category, detail_json   ← existants
-│     c5_score, smurfing_detected, card_testing_count ← nouveaux
+│     c5_score, smurfing_detected                ← nouveaux
 │
 ├── _get_zone(customer)                   ← helper : RiskZone ORM ou FK
 ├── _get_country(customer)                ← helper : Country ORM ou FK
@@ -187,7 +184,7 @@ note_c2 = max(65.0, 55.0)  # = 65.0 → contribution = 65 × 0.20 = 13.0
 
 **Source** : `transactions` (fenêtre des **90 derniers jours**)
 
-**Sept analyses cumulées** (v1.3 — chacune peut augmenter la note, jamais la diminuer) :
+**Six analyses cumulées** (v1.3 — chacune peut augmenter la note, jamais la diminuer) :
 
 #### a) Ratio montant total / revenus déclarés
 
@@ -227,20 +224,7 @@ ratio = Σ(montants 90j) / (revenus_mensuel × 3)
 | > 50 %                         | 75            |
 | > 20 %                         | 55            |
 
-#### f) Card testing — micro-transactions carte [v1.3]
-
-Détection comportementale : petits montants répétés sur carte pour valider
-une carte volée avant une fraude de grande ampleur.
-La **validité technique** de la carte est gérée par le service dédié existant.
-
-| Nb micro-tx carte ≤ 1 000 XOF (90j) | Note minimale |
-|--------------------------------------|---------------|
-| ≥ 5                                  | 75            |
-| ≥ 2                                  | 45            |
-
-→ Positionne `self._card_testing_count` (exposé dans le résultat)
-
-#### g) Transactions dupliquées / replay [v1.3]
+#### f) Transactions dupliquées / replay [v1.3]
 
 Détecte les groupes de transactions avec le même montant arrondi (tolérance
 100 XOF pour les frais) vers la même destination, dans une fenêtre de 24 h.
@@ -282,8 +266,8 @@ note_c4 = 10.0   # contribution = 10 × 0.10 = 1.0
 | Situation                        | Note brute | Alerte créée   |
 |----------------------------------|------------|----------------|
 | Aucun lien PEP                   | 0          | —              |
-| Ancienne PEP (`active=False`)    | **50**     | `PEP_ANCIEN`   |
-| PEP active (`active=True` ou flag) | **100**  | `PEP_ACTIF`    |
+| Ancienne PEP (`active=False`)    | **50**     | `PEP_DETECTE`  |
+| PEP active (`active=True` ou flag) | **100**  | `PEP_DETECTE`  |
 
 > **Changement v1.3** : en v1.2, la requête filtrait sur `active=True` — une
 > PEP ayant quitté ses fonctions était invisible et recevait une note de 0.
@@ -401,7 +385,6 @@ les alertes fines sans ré-interroger la base.
 | `detail_json`        | `dict`  | Contributions C1–C6 (existant)                 |
 | `c5_score`           | `float` | Note brute C5 : 0, 50 ou 100 (nouveau)         |
 | `smurfing_detected`  | `bool`  | True si smurfing confirmé en C3 (nouveau)      |
-| `card_testing_count` | `int`   | Nb micro-tx carte détectées en C3 (nouveau)    |
 
 ---
 
@@ -483,36 +466,7 @@ Transactions sur 5 jours : [450 000, 460 000, 440 000, 450 000, 480 000, 430 000
 
 ---
 
-## 7. Détections comportementales complémentaires
-
-### 7.1 Card testing
-
-**Principe** : un fraudeur en possession d'une carte volée effectue plusieurs
-micro-transactions pour vérifier que la carte est active avant de réaliser
-une fraude de grande ampleur.
-
-> **Périmètre** : détection **comportementale uniquement** — la validité
-> technique de la carte (numéro Luhn, date d'expiration) est gérée par le
-> service dédié existant dans le backend.
-
-**Signal détecté dans C3** :
-
-```python
-card_micro_tx = [
-    tx for tx in transactions
-    if "CARTE" in tx.type_op.upper()
-    and 0 < float(tx.montant) <= 1_000   # XOF
-]
-```
-
-| Nb micro-tx carte ≤ 1 000 XOF (90j) | Note C3 minimale | Alerte créée    |
-|--------------------------------------|------------------|-----------------|
-| ≥ 5                                  | 75               | `CARD_TESTING`  |
-| ≥ 2                                  | 45               | — (score pénalisé) |
-
----
-
-### 7.2 Transactions dupliquées / replay
+## 7. Transactions dupliquées / replay
 
 **Principe** : une même transaction est soumise plusieurs fois, soit par
 erreur (double-clic côté client) soit intentionnellement (replay d'un
@@ -573,17 +527,17 @@ compliance — les alertes fines ne sont pas noyées dans `SCORE_ELEVE`.
 
 ### Types d'alertes
 
-| Type           | Déclencheur                                    | Priorité    |
-|----------------|------------------------------------------------|-------------|
-| `SCORE_ELEVE`  | `global_score ≥ 67`                            | Standard    |
-| `PEP_ACTIF`    | `c5_score == 100` (PEP en fonction)            | **Critique**|
-| `PEP_ANCIEN`   | `c5_score == 50` (ancienne PEP — GAFI 5 ans)   | Haute       |
-| `SMURFING`     | `smurfing_detected == True`                    | Haute       |
-| `CARD_TESTING` | `card_testing_count ≥ 5`                       | Haute       |
-| `KYC_INCOMPLET`| `kyc_completion < 40 %`                        | Modérée     |
+| Type               | Déclencheur                                    | Priorité    |
+|--------------------|------------------------------------------------|-------------|
+| `SCORE_ELEVE`      | `global_score ≥ 67`                            | Standard    |
+| `PEP_DETECTE`      | `c5_score ≥ 50` (PEP active ou ancienne)       | **Critique**|
+| `SMURFING_DETECTE` | `smurfing_detected == True`                    | Haute       |
+| `KYC_INCOMPLET`    | `kyc_completion < 40 %`                        | Modérée     |
+| `SEUIL_DEPASSE`    | Dépassement de seuil transactionnel            | Standard    |
+| `BENEFICIAIRE_GROUPEMENT` | Bénéficiaire suspect lié à un groupement | Haute       |
 
-> **Note** : `PEP_DETECTE` est conservé dans le code comme alias de
-> rétrocompatibilité — ne pas l'utiliser pour les nouveaux développements.
+> **Note** : une PEP active (`c5_score == 100`) et une ancienne PEP (`c5_score == 50`)
+> déclenchent toutes deux `PEP_DETECTE`. La décision associée distingue les deux cas.
 
 ### Politique anti-doublon
 
@@ -603,7 +557,6 @@ create_score_alert_if_needed(db, customer_id, result["global_score"], skip_if_op
 create_pep_alert_if_needed(db, customer_id, result["c5_score"], skip_if_open)
 if result["smurfing_detected"]:
     create_smurfing_alert_if_needed(db, customer_id, skip_if_open)
-create_card_testing_alert_if_needed(db, customer_id, result["card_testing_count"], skip_if_open)
 ```
 
 ---
@@ -626,16 +579,15 @@ router._run_scoring()
     │       ├── _load_weights()           ← DB: scoring_criteria
     │       ├── _load_thresholds()        ← DB: risk_thresholds
     │       ├── _score_c1..c6()           ← calculs LBC/FT
-    │       │   └── C3 : smurfing, near-threshold, card testing, dupes [v1.3]
+│   │   └── C3 : smurfing, near-threshold, dupes [v1.3]
     │       │   └── C5 : ancienne PEP → 50, active → 100 [v1.3]
     │       └── _get_category()           ← normalisation ELEVE→ÉLEVÉ
     ├── 3. Score.is_current → False       ← archivage ancien score
     ├── 4. Score(is_current=True)         ← persistance nouveau score
     ├── 5. Alert(SCORE_ELEVE) ?           ← si global_score ≥ 67
     ├── 6. Alertes fines [v1.3] :
-    │       ├── Alert(PEP_ACTIF|PEP_ANCIEN)  ← selon c5_score
-    │       ├── Alert(SMURFING) ?            ← si smurfing_detected
-    │       └── Alert(CARD_TESTING) ?        ← si card_testing_count ≥ 5
+    │       ├── Alert(PEP_DETECTE) ?          ← si c5_score ≥ 50
+    │       └── Alert(SMURFING_DETECTE) ?     ← si smurfing_detected
     ├── 7. AuditLog(SCORING_CALCULATE)    ← traçabilité réglementaire
     └── 8. db.commit()
     │
@@ -664,14 +616,11 @@ ScoreResponse { id, customer_id, global_score, risk_category,
 | # | Fix | Fichier | Description |
 |---|-----|---------|-------------|
 | 7 | `_score_c5` — ancienne PEP | `scoring.py` | Requête sans filtre `active`. Ancienne PEP (`active=False`) → note 50 au lieu de 0. Aligné GAFI R.12 §14. |
-| 8 | Card testing comportemental | `scoring.py` | Détection micro-tx carte répétées (≤ 1 000 XOF) dans C3. Périmètre comportemental uniquement — validité technique gérée ailleurs. |
-| 9 | Near-threshold smurfing | `scoring.py` | Montants 80–100 % du seuil FATF (400k–499k XOF) ajoutés aux suspects en plus des montants ronds. |
-| 10 | Transactions dupliquées | `scoring.py` | Nouvelle méthode `_detect_duplicates()` — même montant arrondi + même destination dans 24 h. |
-| 11 | Champs étendus `calculate_score` | `scoring.py` | `c5_score`, `smurfing_detected`, `card_testing_count` ajoutés au dict résultat (non-breaking). |
-| A | Nouveaux types d'alertes | `alert_service.py` | `PEP_ACTIF`, `PEP_ANCIEN`, `CARD_TESTING` ajoutés. `PEP_DETECTE` conservé en alias. |
-| B | `create_pep_alert_if_needed` | `alert_service.py` | Différencie PEP active (100→`PEP_ACTIF`) et ancienne PEP (50→`PEP_ANCIEN`). |
-| C | `create_card_testing_alert_if_needed` | `alert_service.py` | Alerte dédiée card testing (seuil : ≥ 5 micro-tx). |
-| D | `create_smurfing_alert_if_needed` | `alert_service.py` | Alerte SMURFING dédiée, séparée de SCORE_ELEVE. |
+| 8 | Near-threshold smurfing | `scoring.py` | Montants 80–100 % du seuil FATF (400k–499k XOF) ajoutés aux suspects en plus des montants ronds. |
+| 9 | Transactions dupliquées | `scoring.py` | Nouvelle méthode `_detect_duplicates()` — même montant arrondi + même destination dans 24 h. |
+| 10 | Champs étendus `calculate_score` | `scoring.py` | `c5_score`, `smurfing_detected` ajoutés au dict résultat (non-breaking). |
+| A | `create_pep_alert_if_needed` | `alert_service.py` | Crée `PEP_DETECTE` si c5_score ≥ 50, avec décision différenciée PEP active/ancienne. |
+| B | `create_smurfing_alert_if_needed` | `alert_service.py` | Alerte `SMURFING_DETECTE` dédiée, séparée de `SCORE_ELEVE`. |
 | Int-1 | Intégration router `_run_scoring` | `routers/scoring.py` | Appel de `_create_fine_alerts()` après `create_score_alert_if_needed`. |
 | Int-2 | Intégration `rescore_all_customers` | `routers/scoring.py` | Même intégration pour le rescoring global du portefeuille. |
 
@@ -708,7 +657,7 @@ ScoreResponse { id, customer_id, global_score, risk_category,
 | **TOTAL** | | | **53.75 → 54** |
 
 **Score** : 54/100 — **MOYEN** ✅  
-→ Alerte `PEP_ANCIEN` créée — surveillance renforcée GAFI 5 ans.
+→ Alerte `PEP_DETECTE` créée (ancienne PEP) — surveillance renforcée GAFI 5 ans.
 
 > **v1.2** : C5 = 0 (ancienne PEP non détectée) → score = 46/100  
 > **v1.3** : C5 = 50 → score = 54/100 — conforme GAFI R.12
@@ -721,14 +670,14 @@ ScoreResponse { id, customer_id, global_score, risk_category,
 |---------|-----------|-------|-------------|
 | C1 Profil (HIGH, changeur devises) | 65 | 0.20 | 13.0 |
 | C2 Zone (FRONTIERE + pays frontalier) | 65 | 0.20 | 13.0 |
-| C3 Transactions (smurfing + card testing + destinations FATF) | 85 | 0.25 | 21.25 |
+| C3 Transactions (smurfing + duplicatas + destinations FATF) | 85 | 0.25 | 21.25 |
 | C4 Ancienneté (< 6 mois, cliente récente) | 75 | 0.10 | 7.5 |
 | C5 PEP (avérée — flag + liste CENTIF, active) | 100 | 0.15 | 15.0 |
 | C6 KYC (incomplet, doc invalide + expiré) | 85 | 0.10 | 8.5 |
 | **TOTAL** | | | **78.25 → 78** |
 
 **Score** : 78/100 — **ÉLEVÉ** ✅  
-→ Alertes créées : `SCORE_ELEVE`, `PEP_ACTIF`, `SMURFING`
+→ Alertes créées : `SCORE_ELEVE`, `PEP_DETECTE`, `SMURFING_DETECTE`
 
 ---
 
@@ -751,8 +700,7 @@ routers/scoring.py (v1.3)
   ├── services/alert_service.py
   │     ├── create_score_alert_if_needed      (existant)
   │     ├── create_pep_alert_if_needed        (nouveau [v1.3])
-  │     ├── create_smurfing_alert_if_needed   (nouveau [v1.3])
-  │     └── create_card_testing_alert_if_needed (nouveau [v1.3])
+  │     └── create_smurfing_alert_if_needed   (nouveau [v1.3])
   ├── services/audit_service.py    (log_action)
   ├── models/scores.py             (Score)
   └── schemas/score.py             (ScoringRequest, ScoreResponse, ...)
@@ -762,9 +710,9 @@ schemas/score.py
 
 models/alerts.py
   └── type_alerte : String(50) libre — pas de CHECK CONSTRAINT PostgreSQL
-      Valeurs v1.3 : SCORE_ELEVE | KYC_INCOMPLET | SMURFING
-                     PEP_ACTIF   | PEP_ANCIEN    | CARD_TESTING
-                     PEP_DETECTE (alias rétrocompatibilité)
+      Valeurs utilisées : SCORE_ELEVE | KYC_INCOMPLET | PEP_DETECTE
+                          SMURFING_DETECTE | SEUIL_DEPASSE
+                          BENEFICIAIRE_GROUPEMENT
 ```
 
 ---

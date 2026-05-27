@@ -135,6 +135,37 @@ def update_risk_threshold(
                 status_code=422,
                 detail="score_min must be less than score_max",
             )
+
+    # Applique les modifications avant la validation globale
+    new_min = data.score_min if data.score_min is not None else threshold.score_min
+    new_max = data.score_max if data.score_max is not None else threshold.score_max
+
+    # Vérifie que les seuils restent contigus sans gap ni overlap
+    others = db.query(RiskThreshold).filter(RiskThreshold.id != threshold_id).all()
+    all_thresholds = others + [RiskThreshold(
+        id=threshold_id,
+        category=threshold.category,
+        score_min=new_min,
+        score_max=new_max,
+    )]
+    sorted_ts = sorted(all_thresholds, key=lambda t: t.score_min)
+
+    for i in range(len(sorted_ts) - 1):
+        curr = sorted_ts[i]
+        nxt = sorted_ts[i + 1]
+        if nxt.score_min <= curr.score_max:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Overlap entre '{curr.category}' (0-{curr.score_max}) "
+                       f"et '{nxt.category}' ({nxt.score_min}-{nxt.score_max})",
+            )
+        if nxt.score_min != curr.score_max + 1:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Gap entre '{curr.category}' (0-{curr.score_max}) "
+                       f"et '{nxt.category}' ({nxt.score_min}-{nxt.score_max})",
+            )
+
     if data.score_min is not None:
         threshold.score_min = data.score_min
     if data.score_max is not None:

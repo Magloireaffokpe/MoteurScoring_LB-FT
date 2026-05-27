@@ -10,7 +10,7 @@ class Score(Base):
     __tablename__ = "scores"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    client_id = Column(UUID(as_uuid=True), ForeignKey("customers.id"), nullable=False,index=True)
+    client_id = Column(UUID(as_uuid=True), ForeignKey("customers.id", ondelete="CASCADE"), nullable=False, index=True)
 
     score_global = Column(Integer, nullable=False)            # 0–100
     detail_json = Column(JSONB, nullable=False)               # {"C1": 9.0, ..., "C6": 4.0}

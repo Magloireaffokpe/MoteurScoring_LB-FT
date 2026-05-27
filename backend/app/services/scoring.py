@@ -126,11 +126,17 @@ class ScoringEngine:
             "risk_category"      : str,    # 'FAIBLE' | 'MOYEN' | 'ÉLEVÉ'
             "detail_json"        : {
                 "C1": float,               # contribution absolue = note_brute × poids
+                "C1_raw": float,           # note brute C1 (0-100)
                 "C2": float,
+                "C2_raw": float,
                 "C3": float,
+                "C3_raw": float,
                 "C4": float,
+                "C4_raw": float,
                 "C5": float,
+                "C5_raw": float,
                 "C6": float,
+                "C6_raw": float,
             },
             # Champs étendus v1.3 — utilisés par le router pour les alertes fines
             "c5_score"           : float,  # 0 | 50 | 100
@@ -182,14 +188,14 @@ class ScoringEngine:
         logger.debug("Notes brutes — client %s : %s", customer_id, notes)
 
         # Contributions absolues : note_brute × poids → leur somme = global_score
-        detail_json: dict[str, float] = {
-            code: round(
-                notes[code] * self._weights.get(code, _DEFAULT_WEIGHTS[code]), 4
-            )
-            for code in ("C1", "C2", "C3", "C4", "C5", "C6")
-        }
+        detail_json: dict[str, float] = {}
+        for code in ("C1", "C2", "C3", "C4", "C5", "C6"):
+            note = notes[code]
+            weight = self._weights.get(code, _DEFAULT_WEIGHTS[code])
+            detail_json[code] = round(note * weight, 4)
+            detail_json[f"{code}_raw"] = round(note, 2)
 
-        global_score = min(100, max(0, round(sum(detail_json.values()))))
+        global_score = min(100, max(0, round(sum(detail_json[code] for code in ("C1", "C2", "C3", "C4", "C5", "C6")))))
         risk_category = self._get_category(global_score)
 
         logger.info(

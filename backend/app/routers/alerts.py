@@ -18,7 +18,7 @@ def list_alerts(
     skip: int = Query(0, ge=0),
     limit: int = Query(25, ge=1, le=1000),
     statut: Optional[str] = None,        # 'OPEN', 'UNDER_REVIEW', 'CLOSED'
-    type_alerte: Optional[str] = None,   # 'SCORE_ELEVE', 'KYC_INCOMPLET', 'PEP_DETECTE'
+    type_alerte: Optional[str] = None,   # 'SCORE_ELEVE', 'KYC_INCOMPLET', 'PEP_DETECTE', 'SMURFING_DETECTE', 'SEUIL_DEPASSE', 'BENEFICIAIRE_GROUPEMENT'
     sar_declare: Optional[bool] = None,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)

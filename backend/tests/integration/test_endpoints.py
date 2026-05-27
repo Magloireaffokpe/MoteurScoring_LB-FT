@@ -41,13 +41,13 @@ class TestCustomersEndpoints:
         assert data["nom"] == "SOGLO"
         assert data["prenom"] == "Amélie"
 
-    def test_create_client_compliance_forbidden(self, client, compliance_headers, reference_data):
-        """Seul l'admin peut créer un client."""
+    def test_create_client_compliance_allowed(self, client, compliance_headers, reference_data):
+        """Le compliance officer peut créer un client (require_compliance_or_admin)."""
         response = client.post("/api/clients", headers=compliance_headers, json={
             "nom": "TEST",
-            "prenom": "Forbidden",
+            "prenom": "Allowed",
         })
-        assert response.status_code == 403
+        assert response.status_code == 201
 
     def test_create_client_duplicate_phone(self, client, admin_headers, reference_data):
         client.post("/api/clients", headers=admin_headers, json={
@@ -222,8 +222,10 @@ class TestDashboardEndpoints:
         assert "items" in response.json()
 
     def test_dashboard_pep(self, client, compliance_headers, db, reference_data):
-        customer = Customer(nom="PEP", prenom="Dashboard", statut_pep=True)
-        db.add(customer)
+        from app.models.pep_list import PepEntry
+        entry = PepEntry(nom="PEP", prenom="Dashboard", fonction="Ministre",
+                         pays=reference_data["benin"].code_iso, active=True)
+        db.add(entry)
         db.commit()
 
         response = client.get("/api/dashboard/pep", headers=compliance_headers)

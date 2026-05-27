@@ -30,7 +30,7 @@ cp .env.example .env
 alembic upgrade head
 
 # Démarrer serveur
-python main.py
+uvicorn app.main:app --reload
 # → http://localhost:8000
 # → Swagger: http://localhost:8000/docs
 ```

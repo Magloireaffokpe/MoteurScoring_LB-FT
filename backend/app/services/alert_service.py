@@ -150,22 +150,25 @@ def create_score_alert_if_needed(
     db: Session,
     customer_id: UUID,
     global_score: int,
-    skip_if_open: bool = False,
+    skip_if_open: bool = True,
 ) -> Optional[Alert]:
     """
     Crée automatiquement une alerte SCORE_ELEVE si le score global ≥ 67.
-    Ne crée pas de doublon si skip_if_open=True et alerte déjà ouverte.
+    Vérifie systématiquement qu'aucune alerte OPEN du même type n'existe
+    déjà pour ce client (anti-doublon permanent).
 
     :param db:           Session SQLAlchemy active.
     :param customer_id:  UUID du client.
     :param global_score: Score global calculé par ScoringEngine (0-100).
-    :param skip_if_open: Si True, ne crée pas de doublon.
+    :param skip_if_open: Déprécié — la vérification anti-doublon est
+                         toujours effectuée (paramètre conservé pour
+                         compatibilité ascendante).
     :returns:            Instance Alert créée, ou None.
     """
     if global_score < 67:
         return None
 
-    if skip_if_open and has_open_alert(db, customer_id, ALERT_TYPE_SCORE_ELEVE):
+    if has_open_alert(db, customer_id, ALERT_TYPE_SCORE_ELEVE):
         logger.info(
             "Alerte SCORE_ELEVE déjà ouverte pour client %s — pas de doublon",
             customer_id,

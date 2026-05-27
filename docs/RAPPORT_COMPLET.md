@@ -11,18 +11,20 @@
 ## Table des matières
 
 1. [Contexte et objectifs](#1-contexte-et-objectifs)
+   - [1.3 Cycle de vie du client](#13-cycle-de-vie-du-client-sur-la-plateforme)
 2. [Architecture technique](#2-architecture-technique)
 3. [Modèle de données — 14 tables](#3-modèle-de-données--14-tables)
 4. [Relations et cardinalités complètes](#4-relations-et-cardinalités-complètes)
 5. [Moteur de scoring (C1–C6)](#5-moteur-de-scoring-c1c6)
 6. [Détection du smurfing](#6-détection-du-smurfing)
-7. [Détection du card testing](#7-détection-du-card-testing)
+7. [Transactions dupliquées / replay](#7-transactions-dupliquées--replay)
 8. [Génération d'alertes](#8-génération-dalertes)
 9. [Flux complets](#9-flux-complets)
 10. [Rôles, authentification et sécurité](#10-rôles-authentification-et-sécurité)
 11. [Exports et déclaration SAR](#11-exports-et-déclaration-sar)
 12. [Déploiement](#12-déploiement)
 13. [Tests et couverture](#13-tests-et-couverture)
+- [Annexe C — Observations techniques](#annexe-c--observations-techniques)
 
 ---
 
@@ -42,9 +44,23 @@ Les IMF béninoises sont soumises à la **loi n° 2018-16** sur la Lutte contre 
 RiskGuard est une plateforme web qui **automatise le scoring du risque** sur une échelle de **0 à 100** selon **6 critères pondérés** (C1–C6), avec :
 
 - Catégorisation automatique : FAIBLE (0-33), MOYEN (34-66), ÉLEVÉ (67-100)
-- Détection comportementale avancée : smurfing, card testing, transactions dupliquées
+- Détection comportementale avancée : smurfing, transactions dupliquées
 - Génération d'alertes fines
 - Export de rapports de soupçon (SAR) au format CENTIF
+
+### 1.3 Cycle de vie du client sur la plateforme
+
+**Création du client :** L'agent saisit les informations personnelles (nom, prénom, profession, revenus, adresse, zone géographique). Le système **calcule automatiquement le score de risque** dès la création.
+
+**Ajout des documents KYC :** CNI, passeport, permis, etc. Le système vérifie la validité (date d'expiration) et met à jour le taux de complétude KYC.
+
+**Ouverture de comptes :** Comptes COURANT ou EPARGNE liés au client.
+
+**Enregistrement des transactions :** Dépôts, retraits, virements, paiements avec montant, date, canal et pays source/destination. **Chaque transaction déclenche un rescore automatique.**
+
+**Génération d'alertes :** Si le score dépasse un seuil ou si des comportements suspects sont détectés (PEP, smurfing), une alerte est créée pour investigation.
+
+**Déclaration SAR :** L'agent peut exporter un rapport de soupçon au format CENTIF Bénin.
 
 ---
 
@@ -92,6 +108,29 @@ RiskGuard est une plateforme web qui **automatise le scoring du risque** sur une
 | Tests BE | pytest + httpx TestClient | — |
 | Tests FE | Vitest + Testing Library | — |
 | Conteneurisation | Docker / docker-compose | — |
+
+---
+
+### 2.1 Application React (10 pages)
+
+| Page | Rôle |
+|------|------|
+| **LoginPage** | Authentification avec validation, eye toggle, branding |
+| **DashboardPage** | KPIs, graphiques (risque/KYC), 5 dernières alertes, PEP |
+| **ClientsListPage** | Tableau paginé, filtres (KYC, statut, PEP), recherche |
+| **ClientDetailPage** | 4 onglets (KYC, Scoring, Transactions, Alertes), exports PDF/CSV |
+| **AddClientPage** | Assistant 3 étapes (identité → adresse → documents) |
+| **EditClientPage** | Modification client avec pré-remplissage |
+| **AlertsPage** | Alertes filtrables, mise à jour statut, création, SAR PDF |
+| **ExportsPage** | Recherche auto-complétion, exports PDF/CSV |
+| **ScorePage** | Visualisation standalone du score |
+| **AdminPage** | 7 onglets admin (critères, seuils, paramètres, pays, PEP, utilisateurs, audit logs) |
+
+**Dashboard** — Cartes KPI (total clients, PEP, alertes ouvertes, répartition risque), PieChart répartition risque, BarChart distribution KYC, tableau 5 dernières alertes, liste PEP actifs.
+
+**Fiche client** — 4 onglets : KYC (identité, profession, zone, pays, PEP, complétion), Scoring (jauge SVG, RadarChart C1-C6, historique), Transactions (tableau paginé), Alertes (création, mise à jour, export SAR).
+
+Composants réutilisables : Button, Card, Badge, Modal, Table, ScorePanel, Loader, FormInput, Layout. Librairies : Recharts, Axios (9 services API).
 
 ---
 
@@ -218,7 +257,7 @@ customers (
 | 8 | `transactions` | `compte_id` | `customer_accounts.id` | **CASCADE** |
 | 9 | `transactions` | `origine_pays_id` | `countries.id` | RESTRICT |
 | 10 | `transactions` | `destination_pays_id` | `countries.id` | RESTRICT |
-| 11 | `scores` | `client_id` | `customers.id` | RESTRICT |
+| 11 | `scores` | `client_id` | `customers.id` | **CASCADE** (migration abc123456789) |
 | 12 | `alerts` | `client_id` | `customers.id` | **CASCADE** |
 | 13 | `alerts` | `clos_par` | `users.id` | SET NULL |
 | 14 | `audit_logs` | `user_id` | `users.id` | RESTRICT |
@@ -319,7 +358,7 @@ Chemin 5 (via scoring_criteria — indirect) :
 
 ## 5. Moteur de scoring (C1–C6)
 
-Le fichier `backend/app/services/scoring.py` (870 lignes) implémente le cœur métier.
+Le fichier `backend/app/services/scoring.py` (932 lignes) implémente le cœur métier.
 
 ### 5.1 Principe général
 
@@ -450,7 +489,7 @@ Transactions sur 5 jours :
 - Span 5 jours ≤ 7 ✓
 - Total = 360 000 ≥ 3 × 100 000 = 300 000 ✓
 
-→ **Smurfing détecté** — note C3 = 85, alerte SMURFING créée
+→ **Smurfing détecté** — note C3 = 85, alerte SMURFING_DETECTE créée
 
 #### Cas 2 : Agent immobilier (revenu 2 000 000 FCFA/mois)
 
@@ -483,75 +522,213 @@ Transactions sur 2 jours :
 
 ---
 
-## 7. Détection du card testing
+## 7. Transactions dupliquées / replay
 
-Méthode intégrée dans `_score_c3()` — lignes 438-465.
+Méthode `_detect_duplicates()` dans `_score_c3()`.
 
-### 7.1 Principe
+Détecte les groupes de transactions avec le même montant arrondi (tolérance
+100 XOF pour les frais) vers la même destination, dans une fenêtre de 24 h.
 
-Le card testing est une technique de fraude où un attaquant teste une carte volée en effectuant de **très petits paiements** pour vérifier sa validité avant de l'utiliser pour des montants plus importants.
-
-### 7.2 Détection
-
-```python
-CARD_TESTING_MAX_AMOUNT = 1_000    # XOF : seuil micro-transaction
-CARD_TESTING_ALERT_COUNT = 5       # nb min pour alerte forte
-CARD_TESTING_WARN_COUNT = 2        # nb min pour alerte modérée
-```
-
-Une transaction est marquée comme micro-transaction carte si :
-```python
-canal contient "CARTE" ET 0 < montant ≤ 1_000 XOF
-```
-
-### 7.3 Seuils de déclenchement
-
-| Micro-tx carte | Impact |
-|----------------|--------|
-| ≥ 5 | Alerte **CARD_TESTING** + note C3 ≥ 75 |
-| ≥ 2 | Note C3 ≥ 45 (pas d'alerte formelle) |
-| < 2 | Aucun impact |
+| Nb groupes suspects (24 h) | Note C3 minimale |
+|---------------------------|------------------|
+| ≥ 3                       | 60               |
+| ≥ 1                       | 40               |
 
 ---
 
 ## 8. Génération d'alertes
 
-Fichier : `backend/app/services/alert_service.py` (322 lignes).
+Fichier : `backend/app/services/alert_service.py` (297 lignes).
 
-### 8.1 Types d'alertes
+RiskGuard génère **6 types d'alertes** distincts, chacun correspondant à un signal de risque LBC/FT spécifique.
+Les alertes sont créées automatiquement par le moteur de scoring ou par les services de détection,
+et peuvent aussi être créées manuellement par un agent compliance.
 
-| Type | Déclencheur | Condition |
-|------|------------|-----------|
-| `SCORE_ELEVE` | Score global | ≥ 67 |
-| `PEP_ACTIF` | PEP en fonction | C5 = 100 |
-| `PEP_ANCIEN` | Ancienne PEP | C5 = 50 |
-| **`SMURFING`** | **Fractionnement** | **smurfing_detected = true** |
-| `CARD_TESTING` | Micro-tx carte | ≥ 5 micro-tx |
-| `KYC_INCOMPLET` | Dossier incomplet | complétude < 40% |
+### 8.1 Carte d'identité des 6 alertes
 
-### 8.2 Anti-doublon
+| # | Type | Code | Déclencheur | Règle métier | Router déclencheur |
+|---|------|------|------------|-------------|-------------------|
+| 1 | **Score élevé** | `SCORE_ELEVE` | Score global ≥ 67 (seuil ÉLEVÉ) | Un score de risque LBC/FT ≥ 67/100 déclenche une vigilance maximale avec obligation de déclaration SAR à la CENTIF | `routers/scoring.py:275`, `routers/transactions.py:133` |
+| 2 | **PEP détectée** | `PEP_DETECTE` | Note C5 ≥ 50 (PEP active=100, ancienne PEP=50) | Conforme à la recommandation GAFI R.12. Une PEP active ou ancienne (< 5 ans post-mandat) nécessite une vigilance renforcée sur l'origine des fonds | `routers/scoring.py:181`, `routers/customers.py:151` |
+| 3 | **Smurfing/fractionnement** | `SMURFING_DETECTE` | `smurfing_detected = True` (détection dans `scoring.py:455`) | Fractionnement de sommes importantes en transactions < 500 000 XOF pour contourner le seuil déclaratif FATF. L'alerte est indépendante du score global | `routers/scoring.py:189`, `routers/transactions.py:135` |
+| 4 | **KYC incomplet** | `KYC_INCOMPLET` | Taux de complétion KYC < 40% | Un dossier KYC insuffisant (LOW selon `determine_kyc_level`) empêche l'évaluation correcte du risque. L'agent doit relancer le client pour compléter son dossier | `routers/customers.py:147`, `routers/transactions.py:139` |
+| 5 | **Seuil dépassé** | `SEUIL_DEPASSE` | Cumul 30j > seuil configurable (`SEUIL_MONETAIRE` ou `SEUIL_ESPECES`) | Détection des dépassements de seuils monétaires dans la fenêtre de cumul configurable (défaut 30 jours). Deux sous-types : toutes opérations et espèces (GUICHET/ATM) | `routers/transactions.py:165,189` |
+| 6 | **Bénéficiaire groupement** | `BENEFICIAIRE_GROUPEMENT` | Bénéficiaire commun à ≥ 2 clients ou ≥ 5 transactions ou montant ≥ 5M FCFA | Détection des transferts groupés vers un même bénéficiaire — indicateur de montage financier suspect ou de rabatteur | `services/beneficiaire_service.py:113` |
+
+### 8.2 Règles de déclenchement détaillées
+
+#### 8.2.1 `SCORE_ELEVE` — Score de risque élevé
+- **Déclencheur :** `global_score ≥ 67`
+- **Créée par :** `create_score_alert_if_needed()` dans `alert_service.py:149`
+- **Appelée depuis :**
+  - Scoring initial : `POST /scoring`
+  - Rescore manuel : `POST /scoring/rescore`
+  - Auto-rescore transaction : `POST /customers/{id}/transactions`
+  - Rescore global : `POST /scoring/rescore-all`
+- **Décision typique :** La déclaration SAR à la CENTIF est obligatoire pour tout score ÉLEVÉ
+- **Indépendance :** Cette alerte est créée **quelle que soit** l'origine du score (scoring initial, rescore manuel, auto-rescore transactionnel)
+
+#### 8.2.2 `PEP_DETECTE` — Personne Exposée Politiquement
+- **Déclencheur :** `C5 ≥ 50`, où :
+  - `C5 = 100` → PEP active (`statut_pep=True` ou nom présent dans `pep_list` avec `active=True`)
+  - `C5 = 50` → Ancienne PEP (dans `pep_list` avec `active=False`, `date_fin` < 5 ans)
+  - `C5 = 0` → Aucune correspondance PEP
+- **Conformité GAFI R.12 :** La vigilance renforcée s'applique 5 ans après la fin du mandat
+- **Créée par :** `create_pep_alert_if_needed()` dans `alert_service.py:186`
+- **Appelée depuis :**
+  - Scoring et rescore : `routers/scoring.py:181`
+  - Création client (si `statut_pep=True`) : `routers/customers.py:151`
+  - Auto-rescore transaction : `routers/transactions.py:134`
+- **Décision typique :** Vérification renforcée de l'origine des fonds, justification de la relation commerciale
+
+#### 8.2.3 `SMURFING_DETECTE` — Fractionnement de transactions
+- **Déclencheur :** `smurfing_detected = True` retourné par `ScoringEngine._detect_smurfing()`
+- **Conditions cumulatives :**
+  1. Au moins 3 transactions suspectes (montant rond < 500k XOF ou near-threshold 80%-100%)
+  2. Transactions concentrées sur ≤ 7 jours
+  3. Total des suspects ≥ 3× revenus mensuels déclarés
+- **Indépendance du score global :** Point critique — un client peut avoir un score FAIBLE (ex: 30) mais recevoir une alerte SMURFING_DETECTE si le fractionnement est détecté. L'investigation est obligatoire indépendamment du score.
+- **Créée par :** `create_smurfing_alert_if_needed()` dans `alert_service.py:229`
+- **Appelée depuis :** scoring engine, auto-rescore transaction
+- **Décision typique :** Analyse des flux, demande de justificatifs sur l'origine des fonds fragmentés
+
+#### 8.2.4 `KYC_INCOMPLET` — Dossier d'identification incomplet
+- **Déclencheur :** `kyc_completion < 40%` (niveau `LOW` selon `determine_kyc_level`)
+- **Calcul du taux de complétion :** `compute_kyc_completion()` dans `customer_service.py:4`
+  - 9 champs obligatoires : date_naissance, phone, email, profession_code, revenus_declares, city, region, zone_geo, pays
+  - Chaque champ rempli = +11.1 points
+  - Bonus +10 si documents valides présents
+- **Recalcul :** À chaque création ou modification client, et à chaque ajout de document
+- **Créée par :** `create_kyc_alert_if_needed()` dans `alert_service.py:262`
+- **Appelée depuis :**
+  - Création client : `routers/customers.py:147`
+  - Modification client : `routers/customers.py:224`
+  - Auto-rescore transaction : `routers/transactions.py:139`
+- **Décision typique :** Relance du client pour fournir les pièces manquantes (CNI, justificatif de domicile, etc.)
+
+#### 8.2.5 `SEUIL_DEPASSE` — Dépassement de seuil monétaire
+- **Déclencheur :** Cumul des transactions sur `FENETRE_CUMUL_JOURS` (défaut 30 jours) ≥ seuil configurable
+- **Deux sous-types :**
+  - **Toutes opérations** : `SEUIL_MONETAIRE` (défaut 10 000 000 XOF)
+  - **Espèces uniquement** : `SEUIL_ESPECES` (défaut 3 000 000 XOF) — dépôts via GUICHET ou ATM
+- **Paramètres configurables :** via l'interface admin (`PUT /settings`) ou la table `app_settings`
+- **Créée par :** `create_if_not_open()` directement dans `routers/transactions.py:165,189`
+- **Appelée depuis :** `POST /customers/{id}/transactions` après chaque création de transaction
+- **Décision typique :** Justification des flux dépassant les seuils, vérification de la cohérence avec l'activité déclarée
+- **Note technique :** L'alerte n'est pas créée par alert_service.py mais directement dans le routeur transactions, car elle dépend des cumuls calculés après insertion
+
+#### 8.2.6 `BENEFICIAIRE_GROUPEMENT` — Bénéficiaire commun suspect
+- **Déclencheur :** Virement ou paiement vers un bénéficiaire déjà destinataire de fonds provenant de plusieurs clients distincts
+- **Seuils (configurables) :**
+  - `BENEFICIAIRE_MIN_CLIENTS` ≥ 2 clients distincts vers le même bénéficiaire
+  - Ou `BENEFICIAIRE_MIN_TRANSACTIONS` ≥ 5 transactions vers ce bénéficiaire
+  - Ou `BENEFICIAIRE_MIN_MONTANT` ≥ 5 000 000 XOF cumulés vers ce bénéficiaire
+- **Fenêtre d'analyse :** `FENETRE_CUMUL_JOURS` (défaut 30 jours)
+- **Créée par :** `check_and_alert()` dans `services/beneficiaire_service.py:55`, appelé depuis `routers/transactions.py:194`
+- **Limitation documentée :** La normalisation du nom du bénéficiaire (minuscule, strip) ne couvre pas les homonymes ni les variantes orthographiques. En production réelle, un algorithme de similarité textuelle (Levenshtein, Soundex) serait nécessaire.
+- **Décision typique :** Identifier si le bénéficiaire est un rabatteur, un collecteur de fonds ou une structure écran
+
+### 8.3 Flux de création — Vue d'ensemble
+
+```
+Transaction client
+    │
+    ├── ScoringEngine.calculate_score()
+    │       │
+    │       ├── SCORE_ELEVE       (si global_score ≥ 67)
+    │       ├── PEP_DETECTE       (si C5 ≥ 50)
+    │       └── SMURFING_DETECTE  (si smurfing détecté)
+    │
+    ├── create_kyc_alert_if_needed()
+    │       └── KYC_INCOMPLET     (si kyc_completion < 40%)
+    │
+    ├── Seuils monétaires
+    │       └── SEUIL_DEPASSE     (cumul 30j ≥ seuil)
+    │
+    └── check_and_alert()
+            └── BENEFICIAIRE_GROUPEMENT (bénéficiaire commun)
+```
+
+### 8.4 Indépendance des alertes
+
+**Point critique :** L'alerte `SMURFING_DETECTE` est créée **indépendamment** du score global. 
+Un client peut avoir un score de 30 (FAIBLE) et recevoir une alerte SMURFING_DETECTE 
+si le fractionnement est détecté.
+
+De même, `SEUIL_DEPASSE` et `BENEFICIAIRE_GROUPEMENT` sont déclenchés par des règles 
+transactionnelles indépendantes du moteur de scoring.
+
+### 8.5 Anti-doublon
 
 ```python
 def has_open_alert(db, customer_id, alert_type):
-    # Vérifie si une alerte OPEN du même type existe déjà
-    # Si oui, on ne crée pas de doublon
+    """Vérifie si une alerte OPEN du même type existe déjà pour ce client."""
+    return db.query(Alert).filter(
+        Alert.client_id == customer_id,
+        Alert.type_alerte == alert_type,
+        Alert.statut == STATUS_OPEN,
+    ).first() is not None
 ```
 
-Le rescore automatique utilise `skip_if_open=True` pour éviter les doublons.
+Toutes les fonctions de création d'alertes (`create_if_not_open`, `create_score_alert_if_needed`,
+`create_pep_alert_if_needed`, etc.) vérifient systématiquement qu'aucune alerte OPEN du même type
+n'existe déjà avant d'en créer une nouvelle. Cette vérification évite le spam d'alertes redondantes
+qui rendrait le système inutilisable.
 
-### 8.3 Indépendance des alertes
+Lorsqu'un rescore automatique est déclenché par une transaction, les alertes existantes déjà OPEN 
+ne sont pas dupliquées. Seules les alertes CLOSED peuvent être ré-ouvertes via un nouveau 
+déclenchement.
 
-**Point critique :** l'alerte `SMURFING` est créée **indépendamment** du score global. Un client peut avoir un score de 30 (FAIBLE) et recevoir une alerte SMURFING si le fractionnement est détecté.
+### 8.6 Cycle de vie d'une alerte
 
-```python
-# transactions.py:121-122
-if result["smurfing_detected"]:
-    create_smurfing_alert_if_needed(db, customer_id, skip_if_open=True)
 ```
+                    ┌──────────┐
+                    │   OPEN   │  ← Création automatique (scoring, seuil, etc.)
+                    └────┬─────┘
+                         │ Agent commence l'investigation
+                    ┌────▼──────┐
+                    │ UNDER_    │
+                    │ REVIEW    │  ← Agent examine les faits
+                    └────┬──────┘
+                         │
+              ┌──────────┼──────────┐
+              │          │          │
+         ┌────▼───┐ ┌───▼────┐ ┌───▼────┐
+         │ CLOSED │ │ CLOSED │ │ CLOSED  │
+         │ SAR=   │ │ SAR=   │ │ SAR=    │
+         │ false  │ │ true   │ │ false   │
+         └────────┘ └────────┘ └────────┘
+         Classement  SAR transmis  Fausse alerte
+         sans suite  à la CENTIF   (score réévalué)
+```
+
+Lors de la clôture (`statut = CLOSED`), le système enregistre automatiquement :
+- L'agent ayant clôturé (`clos_par`)
+- La date de clôture (`date_cloture`)
+- La décision (`decision`) — champ texte libre
+- Le flag `sar_declare` — true si un rapport de soupçon a été transmis à la CENTIF
 
 ---
 
 ## 9. Flux complets
+
+### 9.0 Parcours résumé
+
+```
+Création client → Score initial
+    ↓
+Ajout documents KYC → Mise à jour complétude
+    ↓
+Enregistrement transactions → Rescore automatique
+    ↓
+Analyse C1-C6 → Score global → Catégorisation
+    ↓
+Création d'alertes si nécessaire
+    ↓
+Investigation → Export SAR → Déclaration CENTIF
+    ↓
+Journal d'audit (chaque action tracée)
+```
 
 ### 9.1 Création d'un client
 
@@ -578,9 +755,8 @@ Agent → Frontend : Saisit la transaction
             → Sauvegarde le nouveau score
             → Crée les alertes si nécessaire :
                 • SCORE_ELEVE si score ≥ 67
-                • SMURFING si smurfing détecté
-                • CARD_TESTING si ≥ 5 micro-tx carte
-                • PEP_ACTIF/PEP_ANCIEN si PEP détectée
+                • SMURFING_DETECTE si smurfing détecté
+                • PEP_DETECTE si PEP détectée (active ou ancienne)
                 • KYC_INCOMPLET si complétude < 40%
         → Log dans audit_logs (action SCORING_RESCORE)
     → Frontend : Affiche le nouveau score + alertes
@@ -643,7 +819,7 @@ Les permissions sont stockées dans `user_roles.permissions` (JSONB) et vérifi�
 Le SAR (Suspicious Activity Report) est un PDF généré via ReportLab, contenant :
 - Identité du client
 - Description des faits suspects
-- Type d'alerte (SCORE_ELEVE, SMURFING, CARD_TESTING, PEP)
+- Type d'alerte (SCORE_ELEVE, SMURFING_DETECTE, PEP_DETECTE)
 - Score et catégorie de risque
 - Décision de l'agent
 
@@ -667,22 +843,23 @@ Le SAR (Suspicious Activity Report) est un PDF généré via ReportLab, contenan
 DATABASE_URL=postgresql://user:pass@host:5432/riskguard?sslmode=require
 SECRET_KEY=<openssl rand -hex 32>
 DEBUG=false
-CORS_ORIGINS=http://localhost:5173,https://riskguard.vercel.app
+CORS_ORIGINS=http://localhost:5173,https://moteur-scoring-lb-ft.vercel.app
 DATABASE_POOL_SIZE=5
 DATABASE_MAX_OVERFLOW=5
 
 # Frontend (.env)
-VITE_API_URL=https://riskguard-api.onrender.com
+VITE_API_URL=https://moteurscoring-lb-ft.onrender.com
 VITE_USE_MOCKS=false
 ```
 
 ### 12.3 Base de données (Alembic)
 
-4 migrations gèrent le schéma :
+5 migrations gèrent le schéma :
 1. `v1_init` — Création des 14 tables avec contraintes FK
 2. `v2_alerts_audit_pep` — Ajout des types d'alertes, index
 3. `v3_server_defaults` — Valeurs par défaut des colonnes
 4. `v4_column_removal` — Nettoyage des colonnes obsolètes
+5. `v5_cascade_scores` — CASCADE DELETE sur `scores.client_id` pour cohérence avec les autres FK
 
 ---
 
@@ -692,7 +869,7 @@ VITE_USE_MOCKS=false
 
 | Catégorie | Fichiers | Description |
 |-----------|----------|-------------|
-| Unitaires | `tests/scoring/` | Tests du moteur de scoring (C1-C6, smurfing, card testing) |
+| Unitaires | `tests/scoring/` | Tests du moteur de scoring (C1-C6, smurfing) |
 | Unitaires | `tests/auth/` | Authentification, JWT, permissions |
 | Unitaires | `tests/models/` | Validation des modèles ORM |
 | Integration | `tests/endpoints/` | Tests des routes API |
@@ -743,7 +920,7 @@ backend/
 │   │   ├── exports.py             # PDF/CSV/SAR
 │   │   └── ...
 │   ├── services/
-│   │   ├── scoring.py             # Moteur de scoring (870 lignes)
+│   │   ├── scoring.py             # Moteur de scoring (932 lignes)
 │   │   └── alert_service.py       # Création d'alertes
 │   ├── auth/                      # JWT, permissions
 │   └── middleware/                # Logging, erreurs
@@ -755,7 +932,7 @@ backend/
 
 frontend/
 ├── src/
-│   ├── pages/                     # 9 pages React
+│   ├── pages/                     # 10 pages React
 │   ├── components/                # 10 composants réutilisables
 │   ├── services/                  # 8 services API (Axios)
 │   ├── context/                   # AuthContext, AppContext
@@ -771,8 +948,8 @@ frontend/
 
 ### B.1 Court terme
 
-1. **Alerte SMURFING pour les gros revenus** — Ajuster `_SMURFING_REVENUE_MULT` (3.0 → 1.5) ou le rendre dynamique selon le profil
-2. **Index manquant** — Ajouter CASCADE DELETE sur `scores.client_id`
+1. **Alerte SMURFING_DETECTE pour les gros revenus** — Ajuster `_SMURFING_REVENUE_MULT` (3.0 → 1.5) ou le rendre dynamique selon le profil
+2. ~~**Index manquant** — Ajouter CASCADE DELETE sur `scores.client_id`~~ ✅ **Corrigé** (migration `abc123456789`)
 3. **Notification temps réel** — WebSocket ou polling dashboard pour alertes critiques
 4. **Validation téléphone** — Format +229 XX XX XX XX (Bénin)
 
@@ -788,6 +965,16 @@ frontend/
 1. **Géo-scoring temps réel** — Analyse GPS des transactions
 2. **Cross-IMF** — Partage anonymisé d'indicateurs entre institutions
 3. **Déclaration CENTIF automatisée** — API directe vers la CENTIF Bénin
+
+---
+
+## Annexe C — Observations techniques
+
+- Le scoring est basé sur les tables `scoring_criteria` et `risk_thresholds`. Les poids par défaut (fallback) sont codés en dur dans `scoring.py`.
+- `Score.categorie` est stocké en base avec la valeur `ELEVE` (sans accent) mais normalisé côté API en `ÉLEVÉ` via un mapping explicite dans `_get_category()`.
+- `Transaction.date_op` est stocké sans fuseau horaire (naive datetime) et comparé en UTC naive pour compatibilité PostgreSQL.
+- `pep_list` gère le champ `active` automatiquement via trigger SQL en fonction des dates (`date_fin`).
+- `app_settings` permet de paramétrer des seuils monétaires (SMURFING_AMOUNT_THRESHOLD, SMURFING_NEAR_THRESHOLD_RATIO, etc.) utilisables par le backend sans recompilation.
 
 ---
 

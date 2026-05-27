@@ -128,11 +128,17 @@ def _build_score_response(score: Score) -> ScoreResponse:
         risk_category=_normalize_category(score.categorie),  # [Rob-1]
         detail_json=DetailJson(
             C1=float(raw_detail.get("C1", 0.0)),
+            C1_raw=float(raw_detail.get("C1_raw", 0.0)),
             C2=float(raw_detail.get("C2", 0.0)),
+            C2_raw=float(raw_detail.get("C2_raw", 0.0)),
             C3=float(raw_detail.get("C3", 0.0)),
+            C3_raw=float(raw_detail.get("C3_raw", 0.0)),
             C4=float(raw_detail.get("C4", 0.0)),
+            C4_raw=float(raw_detail.get("C4_raw", 0.0)),
             C5=float(raw_detail.get("C5", 0.0)),
+            C5_raw=float(raw_detail.get("C5_raw", 0.0)),
             C6=float(raw_detail.get("C6", 0.0)),
+            C6_raw=float(raw_detail.get("C6_raw", 0.0)),
         ),
         is_current=score.is_current,
         scored_by=score.calcule_par or "AUTOMATED",

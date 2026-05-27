@@ -64,7 +64,7 @@
 | UC-07 | Ajouter compte | Agent, Admin | COURANT ou EPARGNE |
 | UC-08 | Ajouter document KYC | Agent, Admin | CNI, PASSEPORT, etc. |
 | UC-09 | Enregistrer transaction | Agent, Admin | + auto-rescore + alerte |
-| UC-10 | Calculer score | Agent, Admin, Système | C1-C6, smurfing, card testing |
+| UC-10 | Calculer score | Agent, Admin, Système | C1-C6, smurfing, transactions dupliquées |
 | UC-10b | Scoring automatique | Système | Déclenché par création client ou transaction |
 | UC-10c | Génération alerte | Système | Si score > 66 après rescore |
 | UC-11 | Gérer alertes | Agent, Admin | Filtrer, ouvrir, clôturer, SAR |
@@ -197,10 +197,9 @@ ScoringEngine->DB: SELECT transactions FROM customer
 ScoringEngine->DB: SELECT accounts, docs, customer
 ScoringEngine->ScoringEngine: compute C1..C6 scores
 ScoringEngine->ScoringEngine: detect smurfing
-ScoringEngine->ScoringEngine: detect card testing
 ScoringEngine->ScoringEngine: detect duplicates
 ScoringEngine->ScoringEngine: weighted sum = global_score
-ScoringEngine-->Backend: {score_global, categorie, detail, smurfing, card_testing}
+ScoringEngine-->Backend: {score_global, categorie, detail_json, smurfing_detected}
 Backend->DB: UPDATE scores SET is_current=false WHERE client_id=X
 Backend->DB: INSERT INTO scores (...is_current=true)
 Backend->AlertService: check thresholds
@@ -297,33 +296,37 @@ Frontend-->Agent: Fichier PDF téléchargé
     │
     ▼
 [Parallélisme]
-    ├──> Calculer C1 (Profil client)
+    ├──> Calculer C1 (Profil professionnel)
     │       ├── profession_risk → score
-    │       ├── statut_pep → score
-    │       └── cohérence revenus → score
+    │       ├── revenus nuls ou incohérents → majoration
+    │       └── — (statut_pep est traité en C5)
     │
-    ├──> Calculer C2 (Transactionnel)
-    │       ├── montant max / min
-    │       ├── volume hebdomadaire
+    ├──> Calculer C2 (Zone géographique)
+    │       ├── zone_geo → niveau de risque
+    │       ├── pays : FATF → max(70), frontalier → max(55), UEMOA → min(40)
+    │       └── — (transactions traitées en C3)
+    │
+    ├──> Calculer C3 (Historique transactionnel)
+    │       ├── ratio montant total / revenus
+    │       ├── fréquence anormale
+    │       ├── retraits cash répétés
     │       ├── détection smurfing
-    │       ├── détection card testing
-    │       └── détection doublons
+    │       ├── homogénéité des montants
+    │       ├── destinations pays à risque
+    │       └── détection duplicatas
     │
-    ├──> Calculer C3 (Géographique)
-    │       ├── zone_geo → risque
-    │       ├── virements internationaux
-    │       └── pays FATF / frontaliers
+    ├──> Calculer C4 (Ancienneté et fidélité)
+    │       ├── durée de la relation (< 6 mois, 1-3 ans, > 3 ans)
+    │       └── détection réactivation brutale
     │
-    ├──> Calculer C4 (Produit/Service)
-    │       ├── type_compte
-    │       └── ancienneté relation
+    ├──> Calculer C5 (Statut PEP)
+    │       ├── flag statut_pep → 100
+    │       ├── correspondance pep_list → active(100) / ancienne(50)
+    │       └── période GAFI 5 ans post-mandat
     │
-    ├──> Calculer C5 (Canal)
-    │       ├── canaux utilisés
-    │       └── proportion internet/mobile
-    │
-    └──> Calculer C6 (KYC)
-            ├── documents valides ?
+    └──> Calculer C6 (Cohérence KYC)
+            ├── documents valides / expirés / manquants
+            ├── ratio revenus / flux mensuel moyen
             └── kyc_completion %
     │
     ▼
@@ -510,7 +513,7 @@ frontend/
 │   │   ├── useForm.js
 │   │   └── usePagination.js
 │   │
-│   ├── pages/                     # 9 pages
+│   ├── pages/                     # 10 pages React
 │   │   ├── LoginPage.jsx
 │   │   ├── DashboardPage.jsx
 │   │   ├── ClientsListPage.jsx
@@ -612,7 +615,7 @@ frontend/
 | Système (auto) | Vert | #059669 |
 | FAIBLE (score) | Vert | #22C55E |
 | MOYEN (score) | Jaune/Orange | #F59E0B |
-| ELEVE (score) | Rouge | #EF4444 |
+| ÉLEVÉ (score) | Rouge | #EF4444 |
 | Entité (classe) | Orange doux | #FED7AA |
 | Association | Gris | #6B7280 |
 | Ligne de vie (sequence) | Gris pointillé | #9CA3AF |

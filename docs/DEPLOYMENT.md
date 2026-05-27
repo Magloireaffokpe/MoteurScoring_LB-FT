@@ -47,13 +47,13 @@
 | `DATABASE_URL` | URI Neon |
 | `SECRET_KEY` | `openssl rand -hex 32` |
 | `DEBUG` | `false` |
-| `CORS_ORIGINS` | `https://riskguard.vercel.app` |
+| `CORS_ORIGINS` | `https://moteur-scoring-lb-ft.vercel.app` |
 | `DATABASE_POOL_SIZE` | `5` |
 | `DATABASE_MAX_OVERFLOW` | `5` |
 
 4. **Render Cron Jobs (optionnel)** pour le rescore automatique :
    - Schedule : `0 2 * * *`
-   - Command : `curl -X POST https://riskguard-backend.onrender.com/api/scoring/rescore -H "Authorization: Bearer <admin-token>"`
+   - Command : `curl -X POST https://moteurscoring-lb-ft.onrender.com/api/scoring/rescore -H "Authorization: Bearer <admin-token>"`
 
 ### Fichier `Procfile` (déjà créé)
 ```
@@ -72,7 +72,7 @@ web: gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:
    - **Build Command** : `npm run build`
    - **Output Directory** : `dist`
 3. **Environment Variable** :
-   - `VITE_API_URL` → `https://riskguard-backend.onrender.com`
+   - `VITE_API_URL` → `https://moteurscoring-lb-ft.onrender.com`
 4. Le fichier `vercel.json` gère déjà le routing SPA et le cache des assets.
 
 ---

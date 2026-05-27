@@ -88,14 +88,24 @@ class ScoringRequest(BaseModel):
 
 class DetailJson(BaseModel):
     """
-    Contributions absolues de chaque critère au score global.
+    Contributions absolues de chaque critère au score global ET
+    notes brutes (0-100) pour le RadarChart.
 
-    Chaque valeur = note_brute (0–100) × poids_normalisé.
+    Chaque `C<N>` = note_brute × poids_normalisé.
+    Chaque `C<N>_raw` = note_brute (0-100) de ce critère.
+
     La somme des 6 contributions est égale à `global_score` (à l'arrondi près).
 
     Exemple pour un client à risque moyen ::
 
-        { "C1": 9.0, "C2": 15.0, "C3": 16.25, "C4": 5.5, "C5": 0.0, "C6": 4.0 }
+        {
+            "C1": 9.0, "C1_raw": 45.0,
+            "C2": 15.0, "C2_raw": 75.0,
+            "C3": 16.25, "C3_raw": 65.0,
+            "C4": 5.5, "C4_raw": 55.0,
+            "C5": 0.0, "C5_raw": 0.0,
+            "C6": 4.0, "C6_raw": 40.0
+        }
         → global_score = 50 (somme arrondie)
     """
 
@@ -103,25 +113,49 @@ class DetailJson(BaseModel):
         ..., ge=0.0,
         description="Profil professionnel — contribution au score global",
     )
+    C1_raw: float = Field(
+        0.0, ge=0.0, le=100.0,
+        description="Profil professionnel — note brute (0-100)",
+    )
     C2: float = Field(
         ..., ge=0.0,
         description="Zone géographique — contribution au score global",
+    )
+    C2_raw: float = Field(
+        0.0, ge=0.0, le=100.0,
+        description="Zone géographique — note brute (0-100)",
     )
     C3: float = Field(
         ..., ge=0.0,
         description="Historique transactionnel — contribution au score global",
     )
+    C3_raw: float = Field(
+        0.0, ge=0.0, le=100.0,
+        description="Historique transactionnel — note brute (0-100)",
+    )
     C4: float = Field(
         ..., ge=0.0,
         description="Ancienneté & fidélité — contribution au score global",
+    )
+    C4_raw: float = Field(
+        0.0, ge=0.0, le=100.0,
+        description="Ancienneté & fidélité — note brute (0-100)",
     )
     C5: float = Field(
         ..., ge=0.0,
         description="Statut PEP — contribution au score global",
     )
+    C5_raw: float = Field(
+        0.0, ge=0.0, le=100.0,
+        description="Statut PEP — note brute (0-100)",
+    )
     C6: float = Field(
         ..., ge=0.0,
         description="Cohérence KYC — contribution au score global",
+    )
+    C6_raw: float = Field(
+        0.0, ge=0.0, le=100.0,
+        description="Cohérence KYC — note brute (0-100)",
     )
 
 

@@ -1,7 +1,9 @@
 # Contrat API — RiskGuard (Scoring LBC/FT)
 
 **Version :** 1.2 — Mai 2026
-**Base URL :** `http://localhost:8000`
+**Base URL (dev) :** `http://localhost:8000`
+**Base URL (prod) :** `https://moteurscoring-lb-ft.onrender.com`
+**Frontend :** `https://moteur-scoring-lb-ft.vercel.app`
 **Auth :** JWT (Bearer) via cookie `access_token` (httpOnly, secure, samesite=lax)
 **Content-Type :** `application/json` (sauf uploads multipart)
 **Docs auto :** `/docs` (Swagger) | `/redoc` (ReDoc)
@@ -137,17 +139,27 @@ Liste paginée/filtrée des alertes.
 {
   "items": [{
     "id": "uuid", "client_id": "uuid",
-    "type_alerte": "SMURFING", "statut": "OPEN",
+    "type_alerte": "SCORE_ELEVE", "statut": "OPEN",
     "decision": null, "sar_declare": false,
     "date_creation": "2026-05-21T10:30:00", "date_cloture": null,
-    "clos_par": null,
-    "client": { "id": "uuid", "nom": "OUEDRAOGO", "prenom": "Fatima" }
+    "clos_par": null
   }],
   "total": 20,
   "skip": 0,
   "limit": 25
 }
 ```
+
+**Types d'alertes utilisés par le système :**
+
+| Type | Déclencheur |
+|------|-------------|
+| `SCORE_ELEVE` | Score global ≥ 67 |
+| `PEP_DETECTE` | Correspondance PEP active ou ancienne (c5_score ≥ 50) |
+| `SMURFING_DETECTE` | Fractionnement probable détecté dans C3 |
+| `KYC_INCOMPLET` | Taux de complétion KYC < 40 % |
+| `SEUIL_DEPASSE` | Dépassement de seuil transactionnel |
+| `BENEFICIAIRE_GROUPEMENT` | Bénéficiaire suspect lié à un groupement |
 
 ### `GET /api/alerts/{alert_id}`
 Détail d'une alerte.
@@ -162,12 +174,14 @@ Créer une alerte manuelle.
 ```json
 {
   "client_id": "uuid",
-  "type_alerte": "MANUAL_REVIEW",
+  "type_alerte": "SCORE_ELEVE",
   "statut": "OPEN",
   "decision": null,
   "sar_declare": false
 }
 ```
+
+**Note :** le champ `type_alerte` accepte toute chaîne (ex: `PEP_DETECTE`, `SMURFING_DETECTE`, `KYC_INCOMPLET`).
 
 **Response 201 :** `AlertResponse`
 
@@ -229,12 +243,12 @@ Liste des 6 critères de scoring avec leurs poids.
 ```json
 {
   "items": [
-    { "id": 1, "code": "C1", "name": "Profil client", "weight": 15.00 },
-    { "id": 2, "code": "C2", "name": "Transactionnel", "weight": 20.00 },
-    { "id": 3, "code": "C3", "name": "Géographique", "weight": 20.00 },
-    { "id": 4, "code": "C4", "name": "Produit/Service", "weight": 15.00 },
-    { "id": 5, "code": "C5", "name": "Canal de distribution", "weight": 15.00 },
-    { "id": 6, "code": "C6", "name": "KYC documentaire", "weight": 15.00 }
+    { "id": 1, "code": "C1", "name": "Profil professionnel", "weight": 20.00 },
+    { "id": 2, "code": "C2", "name": "Zone géographique", "weight": 20.00 },
+    { "id": 3, "code": "C3", "name": "Historique transactionnel", "weight": 25.00 },
+    { "id": 4, "code": "C4", "name": "Ancienneté et fidélité", "weight": 10.00 },
+    { "id": 5, "code": "C5", "name": "Statut PEP", "weight": 15.00 },
+    { "id": 6, "code": "C6", "name": "Cohérence KYC", "weight": 10.00 }
   ],
   "total": 6
 }
@@ -416,7 +430,7 @@ Liste des zones géographiques.
 **Permissions :** tous utilisateurs (GET) | `require_compliance_or_admin` (POST)
 
 ### `POST /api/scoring`
-Calculer le score initial d'un client (C1-C6, smurfing, card testing).
+Calculer le score initial d'un client (C1-C6, smurfing).
 
 **Request :** `{ "customer_id": "uuid" }`
 
@@ -446,8 +460,7 @@ Historique des scores d'un client.
   "score_global": 42, "risk_category": "MOYEN",
   "scored_by": "AUTOMATED", "scored_at": "2026-05-21T10:30:00",
   "is_current": true,
-  "details": { "C1": 15.0, "C2": 10.0, "C3": 0.0, "C4": 5.0, "C5": 2.0, "C6": 10.0 },
-  "smurfing_detected": false, "card_testing_count": 0
+  "detail_json": { "C1": 15.0, "C2": 10.0, "C3": 0.0, "C4": 5.0, "C5": 2.0, "C6": 10.0 }
 }
 ```
 

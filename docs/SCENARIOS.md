@@ -35,12 +35,12 @@ Trois profils clients obligatoires créés par `generate_fake_data.py`. Utilisé
 - 1 virement internet (local) : 40 000 FCFA
 
 **Pourquoi le score est FAIBLE :**
-- C1 : Fonctionnaire public = risque LOW
-- C2 : Transactions régulières, montants cohérents avec le revenu
-- C3 : Zone capitale, pays Bénin (non FATF)
-- C4 : Compte épargne standard
-- C5 : Canaux variés mais classiques (guichet, ATM, mobile, internet)
-- C6 : 2 documents valides, loin d'expirer
+- C1 (Profil professionnel) : Fonctionnaire public = risque LOW
+- C2 (Zone géographique) : Zone capitale (CAPITALE, FAIBLE) + Bénin (UEMOA)
+- C3 (Historique transactionnel) : Transactions régulières, montants cohérents avec le revenu
+- C4 (Ancienneté) : Relation de 4 ans (> 3 ans = note 10)
+- C5 (Statut PEP) : Non PEP → 0
+- C6 (Cohérence KYC) : 2 documents valides, loin d'expirer
 
 ### Scénario B — Koffi BIAOU (risque MOYEN)
 
@@ -54,6 +54,7 @@ Trois profils clients obligatoires créés par `generate_fake_data.py`. Utilisé
 - Compte courant (solde moyen : 1 250 000 FCFA)
 - CNI valide + passeport expirant dans 20 jours
 - KYC completion : 65 % — dossier partiel
+- Ancien conseiller communal (PEP historique, mandat terminé en 2023)
 
 **Activité transactionnelle (mensuelle) :**
 - Transactions régulières mais pics x2,5 (anomaly_factor)
@@ -61,12 +62,12 @@ Trois profils clients obligatoires créés par `generate_fake_data.py`. Utilisé
 - 7 retraits cash guichet (100 000 - 300 000 FCFA)
 
 **Pourquoi le score est MOYEN :**
-- C1 : Profession HIGH (commerce transfrontalier)
-- C2 : Pics de transactions x2,5 par rapport au revenu déclaré
-- C3 : Zone frontière, virements vers Nigéria et Togo
-- C4 : Compte courant standard
-- C5 : Internet + guichet
-- C6 : Passeport expire dans 20 jours (pénalisé mais pas bloquant)
+- C1 (Profil professionnel) : Profession HIGH (commerce transfrontalier)
+- C2 (Zone géographique) : Zone frontière (Malanville) + pays Nigéria/Togo (border)
+- C3 (Historique transactionnel) : Pics x2,5, retraits cash répétés, virements vers pays frontaliers
+- C4 (Ancienneté) : Relation de 2 ans (1-3 ans = note 35)
+- C5 (Statut PEP) : Ancien élu local (note 50) — vigilance GAFI 5 ans
+- C6 (Cohérence KYC) : Passeport expire dans 20 jours, KYC 65 %
 
 ### Scénario C — Fatima OUÉDRAOGO (risque ÉLEVÉ)
 
@@ -88,12 +89,12 @@ Trois profils clients obligatoires créés par `generate_fake_data.py`. Utilisé
 - 5 retraits cash massifs (300 000 - 490 000 FCFA) au guichet
 
 **Pourquoi le score est ÉLEVÉ :**
-- C1 : PEP avérée (liste CENTIF) + profession HIGH + revenus incohérents
-- C2 : Fractionnement (smurfing), montants > 1 000 000 FCFA/semaine
-- C3 : Zone frontière, destination Nigéria (frontière) + Libye (FATF)
-- C4 : Compte courant récent avec gros volumes
-- C5 : Internet (virements) + guichet (retraits cash)
-- C6 : Aucun document valide (CNI expirée, passeport expiré)
+- C1 (Profil professionnel) : Profession HIGH (changeur) + revenus déclarés très bas (incohérence)
+- C2 (Zone géographique) : Zone frontière (Malanville) + destinations Nigéria (border) + Libye (FATF)
+- C3 (Historique transactionnel) : Smurfing confirmé (6 virements near-threshold), montants massifs, destinations FATF
+- C4 (Ancienneté) : Relation très récente (45 jours = < 6 mois = note 75)
+- C5 (Statut PEP) : PEP avérée active (liste CENTIF) → note 100
+- C6 (Cohérence KYC) : Aucun document valide (CNI + passeport expirés), KYC 25 %
 
 ---
 
@@ -171,7 +172,7 @@ Trois profils clients obligatoires créés par `generate_fake_data.py`. Utilisé
 |---------|--------|
 | Acteur | Agent Compliance, Administrateur, Système (automatique) |
 | Déclencheurs | Création client, nouvelle transaction, rescore manuel, rescore batch |
-| Critères | C1 (profil) + C2 (transactionnel) + C3 (géographique) + C4 (produit) + C5 (canal) + C6 (KYC) |
+| Critères | C1 (profil professionnel) + C2 (zone géographique) + C3 (historique transactionnel) + C4 (ancienneté) + C5 (statut PEP) + C6 (cohérence KYC) |
 | Résultat | Score 0-100 + catégorie FAIBLE/MOYEN/ÉLEVÉ |
 
 ### UC-11 : Gérer les alertes
@@ -179,7 +180,7 @@ Trois profils clients obligatoires créés par `generate_fake_data.py`. Utilisé
 |---------|--------|
 | Acteur | Agent Compliance, Administrateur |
 | Flux | Liste des alertes → filtrer → ouvrir → décider (clôture/SAR) |
-| Types d'alerte | SMURFING, CARD_TESTING, HIGH_RISK_COUNTRY, PEP, MANUAL_REVIEW |
+| Types d'alerte | SCORE_ELEVE, PEP_DETECTE, SMURFING_DETECTE, KYC_INCOMPLET, SEUIL_DEPASSE, BENEFICIAIRE_GROUPEMENT |
 
 ### UC-12 : Déclarer un SAR (Suspicious Activity Report)
 | Élément | Valeur |
@@ -227,12 +228,12 @@ MOYEN  : 34-66 → Surveillance renforcée
 
 | Code | Nom | Poids défaut | Déclencheurs |
 |------|-----|-------------|--------------|
-| C1 | Profil client | 15 % | Profession à risque, PEP, incohérence revenus |
-| C2 | Transactionnel | 20 % | Smurfing, montant > 1M FCFA, volume hebdo |
-| C3 | Géographique | 20 % | Zone frontière/FATF, virements internationaux |
-| C4 | Produit/Service | 15 % | Type de compte, ancienneté |
-| C5 | Canal | 15 % | Internet, mobile (vs guichet) |
-| C6 | KYC | 15 % | Document invalide/expiré, KYC incomplet |
+| C1 | Profil professionnel | 20 % | Niveau de risque professionnel, incohérence revenus/profil |
+| C2 | Zone géographique | 20 % | Zone frontière/FATF, pays non UEMOA |
+| C3 | Historique transactionnel | 25 % | Smurfing, ratio montant/revenus, fréquence, destinations à risque, duplicatas |
+| C4 | Ancienneté et fidélité | 10 % | Durée relation < 6 mois, réactivation brutale |
+| C5 | Statut PEP | 15 % | PEP active (100), ancienne PEP (50), GAFI R.12 |
+| C6 | Cohérence KYC | 10 % | Document invalide/expiré, KYC incomplet, incohérence revenus/flux |
 
 ### Règle 3 — Délais de traitement
 - Alerte non traitée → escalade après 7 jours ouvrés

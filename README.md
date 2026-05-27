@@ -16,8 +16,8 @@ Système de scoring automatisé pour la lutte contre le blanchiment de capitaux 
 
 - [Setup Local](./docs/SETUP.md) — Comment configurer l'environnement
 - [API Contract](./docs/API_CONTRACT.md) — Spécifications API REST
-- [GitHub Workflow](./docs/GITHUB_WORKFLOW.md) — Conventions Git
 - [Déploiement](./docs/DEPLOYMENT.md) — Docker & production
+- [Documentation complète](./docs/RAPPORT_COMPLET.md) — Rapport détaillé du projet
 
 ## ⚡ Quick Start
 
@@ -25,7 +25,7 @@ Système de scoring automatisé pour la lutte contre le blanchiment de capitaux 
 # Backend
 cd backend
 pip install -r requirements.txt
-python main.py
+uvicorn app.main:app --reload
 
 # Frontend
 cd frontend

@@ -55,18 +55,20 @@ risk_zones ──< customers
 | 1 | `id` | `Integer` | PK | — | auto-incrément |
 | 2 | `name` | `String(100)` | NOT NULL | — | CAPITALE, FRONTIERE, RURALE... |
 | 3 | `risk_level` | `String(20)` | NOT NULL | — | FAIBLE, MOYEN, ELEVE, TRES_ELEVE |
-| 4 | `source` | `Text` | OUI | — | Référence GIABA / cellule TRACFIN |
+| 4 | `source` | `Text` | OUI | — | Référence GIABA / CENTIF Bénin |
 | 5 | `description` | `Text` | OUI | — | Justificatif du niveau de risque |
 
 **FK reçues :** `customers.zone_geo`
 
-**Données typiques :**
+**Données typiques (seed_db.py) :**
 | ID | Name | Risk Level |
 |----|------|------------|
 | 1 | CAPITALE | FAIBLE |
-| 2 | URBAINE | MOYEN |
-| 3 | FRONTIERE | ELEVE |
-| 4 | RURALE | FAIBLE |
+| 2 | URBAINE | FAIBLE |
+| 3 | SEMI_URBAINE | MOYEN |
+| 4 | RURALE | MOYEN |
+| 5 | FRONTIERE | ELEVE |
+| 6 | CONFLIT | TRES_ELEVE |
 
 ---
 
@@ -82,15 +84,15 @@ risk_zones ──< customers
 | 6 | `updated_by` | `UUID` | OUI | — | FK → `users.id` |
 | 7 | `updated_at` | `DateTime` | OUI | `now()` | Auto mis à jour |
 
-**Données initiales :**
+**Données initiales (seed_db.py) :**
 | Code | Nom | Poids |
 |------|-----|-------|
-| C1 | Profil client | 15.00 |
-| C2 | Transactionnel | 20.00 |
-| C3 | Géographique | 20.00 |
-| C4 | Produit/Service | 15.00 |
-| C5 | Canal de distribution | 15.00 |
-| C6 | KYC documentaire | 15.00 |
+| C1 | Profil professionnel | 20.00 |
+| C2 | Zone géographique | 20.00 |
+| C3 | Historique transactionnel | 25.00 |
+| C4 | Ancienneté et fidélité | 10.00 |
+| C5 | Statut PEP | 15.00 |
+| C6 | Cohérence KYC | 10.00 |
 
 ---
 
@@ -140,7 +142,7 @@ risk_zones ──< customers
 
 ## 7. `customers` — Clients (table centrale)
 
-**47 champs — la table la plus large du schéma.**
+**23 colonnes — la table centrale du schéma.**
 
 | # | Champ | Type | Nullable | Défaut | Notes |
 |---|-------|------|----------|--------|-------|
@@ -240,7 +242,7 @@ risk_zones ──< customers
 | 1 | `id` | `UUID` | PK | `uuid4()` | |
 | 2 | `client_id` | `UUID` | NOT NULL | — | FK → `customers.id`, CASCADE, **indexé** |
 | 3 | `clos_par` | `UUID` | OUI | — | FK → `users.id` |
-| 4 | `type_alerte` | `String(50)` | NOT NULL | — | SMURFING / CARD_TESTING / HIGH_RISK_COUNTRY / PEP / MANUAL_REVIEW |
+| 4 | `type_alerte` | `String(50)` | NOT NULL | — | SCORE_ELEVE / KYC_INCOMPLET / PEP_DETECTE / SMURFING_DETECTE / SEUIL_DEPASSE / BENEFICIAIRE_GROUPEMENT |
 | 5 | `statut` | `String(20)` | NOT NULL | `"OPEN"` | OPEN / CLOSED, **indexé** |
 | 6 | `decision` | `Text` | OUI | — | Commentaire de clôture |
 | 7 | `sar_declare` | `Boolean` | NOT NULL | `false` | SAR transmis à CENTIF |
@@ -284,7 +286,7 @@ risk_zones ──< customers
 |---|-------|------|----------|--------|-------|
 | 1 | `id` | `UUID` | PK | `uuid4()` | |
 | 2 | `client_id` | `UUID` | NOT NULL | — | FK → `customers.id`, **indexé** |
-| 3 | `score_global` | `Integer` | 0 NOT NULL | — | 0–100 |
+| 3 | `score_global` | `Integer` | NOT NULL | — | 0–100 |
 | 4 | `detail_json` | `JSONB` | NOT NULL | — | `{"C1": 15.0, "C2": 10.0, "C3": 0.0, "C4": 5.0, "C5": 2.0, "C6": 10.0}` |
 | 5 | `categorie` | `String(10)` | NOT NULL | — | FAIBLE / MOYEN / ELEVE |
 | 6 | `is_current` | `Boolean` | OUI | `true` | Un seul `true` par client |
@@ -322,7 +324,7 @@ risk_zones ──< customers
 | `transactions.destination_pays_id` | `countries.id` | RESTRICT |
 | `alerts.client_id` | `customers.id` | **CASCADE** |
 | `alerts.clos_par` | `users.id` | SET NULL |
-| `scores.client_id` | `customers.id` | RESTRICT (cascade manquante) |
+| `scores.client_id` | `customers.id` | **CASCADE** (corrigé par migration abc123456789) |
 | `audit_logs.user_id` | `users.id` | RESTRICT |
 | `audit_logs.client_id` | `customers.id` | SET NULL |
 | `pep_list.pays` | `countries.id` | RESTRICT |
@@ -334,7 +336,7 @@ risk_zones ──< customers
 ✅ `customer_accounts.client_id → CASCADE`
 ✅ `transactions.compte_id → CASCADE`
 ✅ `alerts.client_id → CASCADE`
-❌ `scores.client_id` — **pas de CASCADE** (bug connu, nécessite migration)
+✅ `scores.client_id` — **CASCADE** (migration abc123456789)
 
 ---
 
