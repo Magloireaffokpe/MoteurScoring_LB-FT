@@ -151,13 +151,16 @@ export function ScorePanel({
   const color = scoreColor(score ?? 0);
 
   // Données radar : { subject: 'C1', value: 9.0, fullMark: 25 }
+  // On filtre les clés _raw pour ne garder que les contributions (C1–C6)
   const radarData = useMemo(() => {
     if (!detailJson) return [];
-    return Object.entries(detailJson).map(([key, val]) => ({
-      subject: key,
-      value: val,
-      fullMark: 25,
-    }));
+    return Object.entries(detailJson)
+      .filter(([key]) => /^C[1-6]$/.test(key))
+      .map(([key, val]) => ({
+        subject: key,
+        value: val,
+        fullMark: 25,
+      }));
   }, [detailJson]);
 
   const totalContrib = radarData.reduce((sum, d) => sum + (d.value ?? 0), 0);

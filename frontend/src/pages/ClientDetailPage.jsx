@@ -407,7 +407,7 @@ export default function ClientDetailPage() {
       label: "Montant",
       render: (v, row) => (
         <span className="font-bold font-mono">
-          {formatAmount(v)} {row.devise || "XOF"}
+          {formatAmount(v, row.devise)}
         </span>
       ),
     },
