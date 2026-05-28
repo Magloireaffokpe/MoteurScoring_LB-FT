@@ -62,7 +62,8 @@ def create_account(
 
     account = CustomerAccount(
         client_id=customer_id,
-        **data.model_dump()
+        **data.model_dump(exclude={"solde_moyen"}),
+        solde_moyen=0,
     )
     db.add(account)
     db.commit()

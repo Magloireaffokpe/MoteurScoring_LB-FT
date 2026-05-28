@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import Optional
 
 from app.db.session import get_db
@@ -27,7 +28,9 @@ def list_pep(
     if search:
         query = query.filter(
             PepEntry.nom.ilike(f"%{search}%") |
-            PepEntry.prenom.ilike(f"%{search}%")
+            PepEntry.prenom.ilike(f"%{search}%") |
+            func.concat(PepEntry.prenom, ' ', PepEntry.nom).ilike(f"%{search}%") |
+            func.concat(PepEntry.nom, ' ', PepEntry.prenom).ilike(f"%{search}%")
         )
 
     total = query.count()

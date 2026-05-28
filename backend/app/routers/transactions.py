@@ -1,4 +1,5 @@
 import logging
+from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -100,6 +101,13 @@ def create_transaction(
     tx = Transaction(**data.model_dump())
     db.add(tx)
     db.flush()
+
+    # ── Mise à jour automatique du solde courant ─────────────────────────
+    montant = Decimal(str(data.montant)) if data.montant else Decimal("0")
+    current = account.solde_moyen or Decimal("0")
+    account.solde_moyen = (
+        current + montant if data.type_op == "DEPOT" else current - montant
+    )
 
     log_action(db, str(current_user.id), "CREATE_TRANSACTION",
                client_id=str(customer_id))

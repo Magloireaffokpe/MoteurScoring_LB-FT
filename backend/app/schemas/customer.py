@@ -34,7 +34,6 @@ class AccountSchema(BaseModel):
 
 class AccountCreate(BaseModel):
     type_compte: Optional[str] = None
-    solde_moyen: Optional[float] = None
     date_ouverture: Optional[date] = None
     status: Optional[str] = None
 
@@ -75,9 +74,6 @@ class CustomerCreate(BaseModel):
     zone_geo: Optional[int] = None
     pays: Optional[int] = None
 
-    statut_pep: Optional[bool] = False
-
-
 # ─── Customer Update ──────────────────────────────────────
 
 class CustomerUpdate(BaseModel):
@@ -94,7 +90,6 @@ class CustomerUpdate(BaseModel):
     zone_geo: Optional[int] = None
     pays: Optional[int] = None
 
-    statut_pep: Optional[bool] = None
     kyc_level: Optional[str] = None
     kyc_completion: Optional[int] = None
     status: Optional[str] = None

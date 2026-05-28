@@ -2,7 +2,7 @@ from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import or_
+from sqlalchemy import or_, func
 from typing import Optional
 from uuid import UUID
 import logging
@@ -19,8 +19,6 @@ from app.services.audit_service import log_action
 from app.services.customer_service import compute_kyc_completion, determine_kyc_level
 from app.services.alert_service import (
     create_kyc_alert_if_needed,
-    create_if_not_open,
-    ALERT_TYPE_PEP_DETECTE,
 )
 
 
@@ -52,6 +50,8 @@ def list_clients(
                 Customer.nom.ilike(f"%{search}%"),
                 Customer.prenom.ilike(f"%{search}%"),
                 Customer.phone.ilike(f"%{search}%"),
+                func.concat(Customer.prenom, ' ', Customer.nom).ilike(f"%{search}%"),
+                func.concat(Customer.nom, ' ', Customer.prenom).ilike(f"%{search}%"),
             )
         )
     if status:
@@ -146,23 +146,15 @@ def create_client(
 
     create_kyc_alert_if_needed(db, customer.id, completion)
 
-    # ── Alerte PEP sur création ──────────────────────────────────────────
-    if customer.statut_pep:
-        create_if_not_open(
-            db=db,
-            client_id=customer.id,
-            type_alerte=ALERT_TYPE_PEP_DETECTE,
-            decision="Statut PEP détecté automatiquement à la création du client.",
-        )
-
-    # Déclenche le scoring initial (module de Magloire)
+    # Déclenche le scoring initial (synchronise automatiquement statut_pep)
     try:
         from app.services.scoring import ScoringEngine
         engine = ScoringEngine(db)
-        engine.calculate_score(str(customer.id), scored_by="AUTOMATED")
+        engine.calculate_score(customer.id)
     except Exception as e:
-        # Log l'erreur mais ne bloque pas la création
         logger.warning("Scoring error for %s: %s", customer.id, e)
+
+    db.commit()
 
     log_action(db, str(current_user.id), "CREATE_CUSTOMER", client_id=str(customer.id))
 

@@ -42,8 +42,6 @@ const INITIAL_DATA = {
   zone_geo: "", // Customer.zone_geo  FK risk_zones.id nullable
   city: "", // Customer.city      String(100) nullable
   region: "", // Customer.region    String(100) nullable
-  statut_pep: false, // Customer.statut_pep Boolean default false
-
   // CustomerDoc (si renseigné — optionnel)
   type_doc: "CNI", // CustomerDoc.type_doc    String(50)
   numero: "", // CustomerDoc.numero      String(100) nullable
@@ -581,7 +579,6 @@ export default function AddClientPage() {
         region: data.region || null,
         zone_geo: data.zone_geo ? Number(data.zone_geo) : null,
         pays: data.pays ? Number(data.pays) : null,
-        statut_pep: data.statut_pep || false,
       };
 
       // 1. Créer le client

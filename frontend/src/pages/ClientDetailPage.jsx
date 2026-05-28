@@ -99,7 +99,6 @@ export default function ClientDetailPage() {
   const [submittingAccount, setSubmittingAccount] = useState(false);
   const [accountForm, setAccountForm] = useState({
     type_compte: "COURANT",
-    solde_moyen: "",
     date_ouverture: "",
     status: "ACTIF",
   });
@@ -283,9 +282,6 @@ export default function ClientDetailPage() {
     if (!accountForm.type_compte) {
       errors.type_compte = "Type de compte requis";
     }
-    if (!accountForm.solde_moyen || Number(accountForm.solde_moyen) <= 0) {
-      errors.solde_moyen = "Solde moyen doit être supérieur à 0";
-    }
     if (!accountForm.status) {
       errors.status = "Statut du compte requis";
     }
@@ -302,7 +298,6 @@ export default function ClientDetailPage() {
       await customerService.createAccount(id, {
         id: crypto.randomUUID(),
         type_compte: accountForm.type_compte,
-        solde_moyen: Number(accountForm.solde_moyen),
         date_ouverture: accountForm.date_ouverture || null,
         status: accountForm.status,
       });
@@ -310,7 +305,6 @@ export default function ClientDetailPage() {
       setShowAccountModal(false);
       setAccountForm({
         type_compte: "COURANT",
-        solde_moyen: "",
         date_ouverture: "",
         status: "ACTIF",
       });
@@ -1144,23 +1138,12 @@ export default function ClientDetailPage() {
             </FormSelect>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <FormInput
-              label="Solde moyen (XOF)"
-              type="number"
-              required
-              placeholder="Montant moyen sur le compte (information, pas utilisé dans le scoring)"
-              value={accountForm.solde_moyen}
-              onChange={(e) => setAccountForm({ ...accountForm, solde_moyen: e.target.value })}
-              error={accountErrors.solde_moyen}
-            />
-            <FormInput
-              label="Date d'ouverture"
-              type="date"
-              value={accountForm.date_ouverture}
-              onChange={(e) => setAccountForm({ ...accountForm, date_ouverture: e.target.value })}
-            />
-          </div>
+          <FormInput
+            label="Date d'ouverture"
+            type="date"
+            value={accountForm.date_ouverture}
+            onChange={(e) => setAccountForm({ ...accountForm, date_ouverture: e.target.value })}
+          />
 
           <ModalFooter>
             <Button

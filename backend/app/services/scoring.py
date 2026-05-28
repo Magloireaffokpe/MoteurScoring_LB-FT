@@ -46,6 +46,7 @@ from typing import Any
 from uuid import UUID
 
 import numpy as np
+from sqlalchemy import func, literal
 from sqlalchemy.orm import Session
 
 from app.models.countries import Country
@@ -714,44 +715,45 @@ class ScoringEngine:
 
     def _score_c5(self, customer: Customer) -> float:
         """
-        Note brute C5 — Statut de Personne Exposée Politiquement.  [Fix 7]
+        Note brute C5 — Statut de Personne Exposée Politiquement.
 
-        Grille révisée (alignée GAFI recommandation 12) :
-          100 → PEP active  (statut_pep=True OU trouvée dans pep_list avec active=True)
+        Grille (alignée GAFI recommandation 12) :
+          100 → PEP active  (active=True dans pep_list)
            50 → Ancienne PEP (active=False — vigilance renforcée 5 ans post-mandat)
             0 → Aucune correspondance PEP connue
 
-        Changement vs v1.2 :
-          Avant : requête filtrée sur active=True → ancienne PEP invisible → note 0
-          Après : pas de filtre active → ancienne PEP détectée → note 50  [Fix 7]
-
-        Note : la gestion des proches de PEP est hors scope (table pep_relationships
-        non présente dans le schéma actuel — roadmap V2).
+        Synchronise automatiquement customer.statut_pep avec le résultat
+        de la recherche dans pep_list (plus de flag manuel possible).
         """
-        # 1. Flag dur positionné manuellement par le compliance officer
-        if customer.statut_pep:
-            logger.debug("C5=100 (statut_pep=True)")
-            return 100.0
-
-        # 2. Recherche dans pep_list SANS filtre active — [Fix 7]
-        #    order_by active.desc() : si doublon de nom, la PEP active est retournée en tête.
-        nom_norm   = self._normalize_name(customer.nom)
+        nom_norm = self._normalize_name(customer.nom)
         prenom_norm = self._normalize_name(customer.prenom)
         match: PepEntry | None = (
             self.db.query(PepEntry)
             .filter(
-                PepEntry.nom.ilike(f"%{nom_norm}%"),
-                PepEntry.prenom.ilike(f"%{prenom_norm}%"),
+                # Match bidirectionnel : nom du client contient nom PEP OU inversement
+                PepEntry.nom.ilike(f"%{nom_norm}%")
+                | literal(nom_norm).ilike(
+                    func.concat("%", PepEntry.nom, "%")
+                ),
+                # Pareil pour le prénom
+                PepEntry.prenom.ilike(f"%{prenom_norm}%")
+                | literal(prenom_norm).ilike(
+                    func.concat("%", PepEntry.prenom, "%")
+                ),
             )
             .order_by(PepEntry.active.desc())
             .first()
         )
 
         if not match:
+            if customer.statut_pep:
+                customer.statut_pep = False
             logger.debug("C5=0 (aucune correspondance PEP)")
             return 0.0
 
         if match.active:
+            if not customer.statut_pep:
+                customer.statut_pep = True
             logger.warning(
                 "⚠ PEP ACTIVE — client %s : %s %s (fonction=%s)",
                 customer.id,
@@ -765,11 +767,15 @@ class ScoringEngine:
         if match.date_fin:
             years_since = (date.today() - match.date_fin).days / 365
             if years_since > 5:
+                if customer.statut_pep:
+                    customer.statut_pep = False
                 logger.debug(
                     "C5=0 — ancienne PEP hors période GAFI (%.1f ans post-mandat)",
                     years_since
                 )
                 return 0.0
+            if not customer.statut_pep:
+                customer.statut_pep = True
             logger.warning(
                 "⚠ ANCIENNE PEP dans période GAFI — client %s : %.1f ans post-mandat",
                 customer.id, years_since
@@ -777,6 +783,8 @@ class ScoringEngine:
             return 50.0
         else:
             # date_fin inconnue → prudence maximale, on maintient la vigilance
+            if not customer.statut_pep:
+                customer.statut_pep = True
             logger.warning(
                 "⚠ ANCIENNE PEP date_fin inconnue — client %s : vigilance maintenue",
                 customer.id

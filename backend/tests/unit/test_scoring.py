@@ -282,21 +282,8 @@ class TestClientStandard:
 
 class TestClientPEP:
 
-    def test_c5_max_si_pep_flag(self, db: Session):
-        """statut_pep=True → note C5 = 100 → contribution C5 = 100 * 0.15 = 15."""
-        customer = _make_customer(db, statut_pep=True, kyc_completion=60)
-        _make_doc(db, customer)
-
-        engine = ScoringEngine(db)
-        result = engine.calculate_score(customer.id)
-
-        expected_c5 = round(100 * 0.15, 4)
-        assert result["detail_json"]["C5"] == pytest.approx(expected_c5, abs=0.5), (
-            f"C5 attendu ≈ {expected_c5}, obtenu {result['detail_json']['C5']}"
-        )
-
-    def test_c5_max_si_correspondance_liste_pep(self, db: Session):
-        """Correspondance nom/prénom dans pep_list → C5 = 100."""
+    def test_c5_max_si_correspondance_liste_pep_active(self, db: Session):
+        """Correspondance nom/prénom dans pep_list (active=True) → C5 = 100, statut_pep sync True."""
         country = _make_country(db)
         pep = PepEntry(
             nom="BIOKOU",
@@ -312,7 +299,7 @@ class TestClientPEP:
             db,
             nom="BIOKOU",
             prenom="Achille",
-            statut_pep=False,   # Flag non activé, mais dans la liste
+            statut_pep=False,
             kyc_completion=70,
         )
         _make_doc(db, customer)
@@ -322,16 +309,18 @@ class TestClientPEP:
 
         expected_c5 = round(100 * 0.15, 4)
         assert result["detail_json"]["C5"] == pytest.approx(expected_c5, abs=0.5)
+        assert customer.statut_pep is True
 
     def test_c5_zero_si_non_pep(self, db: Session):
-        """Client sans lien PEP → C5 = 0."""
-        customer = _make_customer(db, statut_pep=False, kyc_completion=80)
+        """Client sans lien PEP → C5 = 0, statut_pep sync False."""
+        customer = _make_customer(db, statut_pep=True, kyc_completion=80)
         _make_doc(db, customer)
 
         engine = ScoringEngine(db)
         result = engine.calculate_score(customer.id)
 
         assert result["detail_json"]["C5"] == 0.0
+        assert customer.statut_pep is False
 
 
 # ---------------------------------------------------------------------------
