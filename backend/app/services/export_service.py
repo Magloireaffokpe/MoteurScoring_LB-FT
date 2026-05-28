@@ -285,6 +285,9 @@ def _build_bar_chart(detail: dict[str, float]) -> Drawing:
     Construit un diagramme en barres horizontal pour les contributions C1..C6.
     Retourne un objet Drawing ReportLab (robuste, pas de dépendance externe).
     """
+    # Filtrer les clés _raw pour ne garder que les contributions C1..C6
+    detail = {k: v for k, v in detail.items() if not k.endswith("_raw")}
+
     width, height = 400, 160
     d = Drawing(width, height)
 
