@@ -82,7 +82,7 @@ web: gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:
 - [ ] `SECRET_KEY` générée et unique
 - [ ] `DEBUG=false` (le code le refuse avec une base distante)
 - [ ] `CORS_ORIGINS` pointe vers le vrai domaine Vercel
-- [ ] Migrations appliquées sur Neon
+- [ ] Migrations appliquées sur Neon (dont `cb780a8f74e2` — colonnes `score_id`, `beneficiaire_nom`, `tx_ids` sur `alerts`)
 - [ ] Seed exécuté sur Neon
 - [ ] `DATABASE_POOL_SIZE=5` (max 5 pour Neon Free)
 - [ ] Frontend build sans erreur : `npm run build`

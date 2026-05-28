@@ -12,8 +12,8 @@ db = SessionLocal()
 
 try:
     # Ordre inverse des dépendances FK
-    db.query(Score).delete()
     db.query(Alert).delete()
+    db.query(Score).delete()
     db.query(AuditLog).delete()
     db.query(Transaction).delete()
     db.query(CustomerDoc).delete()

@@ -34,4 +34,18 @@ export const alertService = {
    *        statut (pas status) — pas de champ risk_level dans le model
    */
   create: (body) => api.post("/api/alerts", body).then((r) => r.data),
+
+  /**
+   * GET /api/alerts/groupements/beneficiaire
+   * Liste des bénéficiaires suspects groupés
+   */
+  listGroupements: () =>
+    api.get("/api/alerts/groupements/beneficiaire").then((r) => r.data),
+
+  /**
+   * GET /api/alerts/groupements/beneficiaire/{nom}
+   * Détail d'un groupement : alertes pour ce bénéficiaire
+   */
+  getGroupementDetail: (nom) =>
+    api.get(`/api/alerts/groupements/beneficiaire/${encodeURIComponent(nom)}`).then((r) => r.data),
 };

@@ -130,10 +130,10 @@ def create_transaction(
         new_score_global = result["global_score"]
         new_score_category = _normalize_risk_category(result["risk_category"])
 
-        create_score_alert_if_needed(db, customer_id, result["global_score"], skip_if_open=True)
-        create_pep_alert_if_needed(db, customer_id, result["c5_score"], skip_if_open=True)
+        create_score_alert_if_needed(db, customer_id, result["global_score"], skip_if_open=True, score_id=score.id)
+        create_pep_alert_if_needed(db, customer_id, result["c5_score"], skip_if_open=True, score_id=score.id)
         if result["smurfing_detected"]:
-            create_smurfing_alert_if_needed(db, customer_id, skip_if_open=True)
+            create_smurfing_alert_if_needed(db, customer_id, skip_if_open=True, tx_ids=[tx.id])
         customer = db.query(Customer).filter(Customer.id == customer_id).first()
         if customer:
             create_kyc_alert_if_needed(db, customer_id, customer.kyc_completion or 0, skip_if_open=True)

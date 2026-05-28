@@ -115,6 +115,8 @@ def check_and_alert(transaction: Transaction, db: Session) -> None:
             client_id=account.client_id,
             type_alerte=ALERT_TYPE_BENEFICIAIRE_GROUPEMENT,
             decision=decision,
+            beneficiaire_nom=dest_normalized,
+            tx_ids=[transaction.id],
         )
         logger.warning(
             "Alerte BENEFICIAIRE_GROUPEMENT — client=%s bénéf=%s %d clients %d tx %.0f XOF",

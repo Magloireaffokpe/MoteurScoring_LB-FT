@@ -141,6 +141,7 @@ Liste paginée/filtrée des alertes.
     "id": "uuid", "client_id": "uuid",
     "type_alerte": "SCORE_ELEVE", "statut": "OPEN",
     "decision": null, "sar_declare": false,
+    "score_id": "uuid", "beneficiaire_nom": null, "tx_ids": null,
     "date_creation": "2026-05-21T10:30:00", "date_cloture": null,
     "clos_par": null
   }],
@@ -162,7 +163,26 @@ Liste paginée/filtrée des alertes.
 | `BENEFICIAIRE_GROUPEMENT` | Bénéficiaire suspect lié à un groupement |
 
 ### `GET /api/alerts/{alert_id}`
-Détail d'une alerte.
+Détail d'une alerte. Inclut les champs `score_id`, `beneficiaire_nom`, `tx_ids` si renseignés.
+
+### `GET /api/alerts/groupements/beneficiaire`
+Liste des bénéficiaires suspects regroupés (alerte `BENEFICIAIRE_GROUPEMENT`).
+
+**Response 200 :**
+```json
+[
+  {
+    "beneficiaire_nom": "OUEDRAOGO FATIMA",
+    "nb_clients": 3,
+    "nb_transactions": 7,
+    "premiere_alerte": "2026-05-21T10:30:00",
+    "derniere_alerte": "2026-05-25T14:00:00"
+  }
+]
+```
+
+### `GET /api/alerts/groupements/beneficiaire/{nom}`
+Détail d'un groupement : liste des alertes pour ce bénéficiaire.
 
 ### `GET /api/customers/{customer_id}/alerts`
 Alertes d'un client spécifique.
@@ -495,13 +515,13 @@ Rapport SAR CENTIF Bénin (PDF).
 
 ---
 
-## Total : 47 routes
+## Total : 49 routes
 
 | Module | Routes | GET | POST | PUT |
 |--------|--------|-----|------|-----|
 | Auth | 2 | 1 | 1 | — |
 | Clients | 4 | 2 | 1 | 1 |
-| Alertes | 5 | 3 | 1 | 1 |
+| Alertes | 7 | 5 | 1 | 1 |
 | Dashboard | 3 | 3 | — | — |
 | Admin | 11 | 4 | 3 | 4 |
 | Comptes | 3 | 2 | 1 | — |
@@ -512,4 +532,4 @@ Rapport SAR CENTIF Bénin (PDF).
 | Scoring | 5 | 2 | 3 | — |
 | Exports | 3 | 3 | — | — |
 | Health | 1 | 1 | — | — |
-| **Total** | **47** | **28** | **13** | **6** |
+| **Total** | **49** | **30** | **13** | **6** |

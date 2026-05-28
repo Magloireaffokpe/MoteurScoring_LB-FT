@@ -20,6 +20,7 @@ class Score(Base):
     calcule_par = Column(String(50), default="AUTOMATED")     # 'AUTOMATED' ou UUID user
 
     customer = relationship("Customer", back_populates="scores")
+    alerts = relationship("Alert", foreign_keys="Alert.score_id", back_populates="score")
 
     def __repr__(self):
         return f"<Score {self.score_global} ({self.categorie}) — client {self.client_id}>"

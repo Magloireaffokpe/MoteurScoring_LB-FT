@@ -475,7 +475,14 @@ export default function ClientDetailPage() {
     {
       key: "type_alerte",
       label: "Type",
-      render: (v) => <span className="font-mono text-xs">{v}</span>,
+      render: (v, r) => (
+        <button
+          className="font-mono text-xs text-[#1E3A8A] hover:underline text-left"
+          onClick={() => navigate(`/alerts/${r.id}`)}
+        >
+          {v}
+        </button>
+      ),
     },
     { key: "date_creation", label: "Date", render: (v) => formatDatetime(v) },
     {

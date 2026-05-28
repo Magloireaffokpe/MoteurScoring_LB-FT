@@ -452,8 +452,8 @@ def cleanup_magloire_tables(db: Session) -> None:
             .where(AuditLog.client_id.in_(fake_ids))
         )
 
-    db.query(Score).delete(synchronize_session=False)
     db.query(Alert).delete(synchronize_session=False)
+    db.query(Score).delete(synchronize_session=False)
     db.query(Transaction).delete(synchronize_session=False)
     db.query(CustomerDoc).delete(synchronize_session=False)
     db.query(CustomerAccount).delete(synchronize_session=False)

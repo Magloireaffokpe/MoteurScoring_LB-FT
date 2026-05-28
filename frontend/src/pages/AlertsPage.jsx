@@ -1,6 +1,6 @@
 // src/pages/AlertsPage.jsx
 import { useState, useCallback, useEffect } from "react";
-import { AlertTriangle, RefreshCw, Plus } from "lucide-react";
+import { AlertTriangle, RefreshCw, Plus, Users } from "lucide-react";
 
 import { Layout } from "../components/Layout";
 import { Card } from "../components/Card";
@@ -10,6 +10,7 @@ import { Modal, ModalFooter } from "../components/Modal";
 import { Table, Pagination } from "../components/Table";
 import { FormInput, FormSelect, FormTextarea } from "../components/FormInput";
 
+import { useNavigate } from "react-router-dom";
 import { alertService } from "../services/alertService";
 import { customerService } from "../services/customerService";
 import { exportService } from "../services/exportService";
@@ -54,6 +55,7 @@ const ACTION_OPTS = [
 ];
 
 export default function AlertsPage() {
+  const navigate = useNavigate();
   const { page, pageSize, setPage, reset, paginationProps } = usePagination(25);
   const [statusFilter, setStatusFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
@@ -70,6 +72,17 @@ export default function AlertsPage() {
 
   // States pour la création manuelle d'alerte
   const [showCreateModal, setShowCreateModal] = useState(false);
+
+  // States groupements
+  const [activeTab, setActiveTab] = useState("alerts");
+  const [groupementModal, setGroupementModal] = useState(false);
+  const [groupementDetail, setGroupementDetail] = useState(null);
+  const [groupementClients, setGroupementClients] = useState([]);
+  const [loadingGroupement, setLoadingGroupement] = useState(false);
+  const { data: groupements } = useFetch(
+    () => (activeTab === "groupements" ? alertService.listGroupements() : null),
+    [activeTab],
+  );
   const [clients, setClients] = useState([]);
   const [creating, setCreating] = useState(false);
   const [createForm, setCreateForm] = useState({
@@ -161,6 +174,25 @@ export default function AlertsPage() {
     }
   };
 
+  const openGroupement = async (nom) => {
+    setLoadingGroupement(true);
+    setGroupementDetail(nom);
+    try {
+      const alerts = await alertService.getGroupementDetail(nom);
+      const clientIds = [...new Set(alerts.map((a) => a.client_id))];
+      const clientPromises = clientIds.map((id) =>
+        customerService.get(id).catch(() => null),
+      );
+      const clients = (await Promise.all(clientPromises)).filter(Boolean);
+      setGroupementClients(clients);
+      setGroupementModal(true);
+    } catch {
+      toast.error("Erreur chargement du groupement");
+    } finally {
+      setLoadingGroupement(false);
+    }
+  };
+
   const handleSar = async (alertId) => {
     try {
       await exportService.sarPdf(alertId);
@@ -178,9 +210,12 @@ export default function AlertsPage() {
         const client = clients.find((c) => c.id === r.client_id);
         const name = client ? `${client.prenom} ${client.nom}` : null;
         return (
-          <span className="text-sm font-semibold text-[#111827] font-sans">
+          <button
+            className="text-sm font-semibold text-[#1E3A8A] font-sans hover:underline text-left"
+            onClick={() => navigate(`/alerts/${r.id}`)}
+          >
             {name || r.client_id?.slice(0, 12) + "…"}
-          </span>
+          </button>
         );
       },
     },
@@ -255,7 +290,7 @@ export default function AlertsPage() {
   return (
     <Layout pageTitle="Gestion des alertes">
       <div className="space-y-5">
-        {/* KPI mini */}
+        {/* KPIs mini */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[
             {
@@ -295,104 +330,181 @@ export default function AlertsPage() {
           ))}
         </div>
 
-        {/* Filtres */}
-        <Card>
-          <div className="flex flex-wrap gap-4 items-end">
-            <div className="flex-1 min-w-[140px]">
-              <label className="text-sm font-medium text-[#374151] font-sans block mb-1.5">
-                Statut
-              </label>
-              <select
-                className="w-full px-3 py-2.5 rounded-xl border border-[#E5E7EB] text-sm bg-white
-                           focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]/30"
-                value={statusFilter}
-                onChange={(e) => {
-                  setStatusFilter(e.target.value);
-                  reset();
-                }}
-              >
-                {STATUS_OPTS.map((o) => (
-                  <option key={o.v} value={o.v}>
-                    {o.l}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex-1 min-w-[140px]">
-              <label className="text-sm font-medium text-[#374151] font-sans block mb-1.5">
-                Type d'alerte
-              </label>
-              <select
-                className="w-full px-3 py-2.5 rounded-xl border border-[#E5E7EB] text-sm bg-white
-                           focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]/30"
-                value={typeFilter}
-                onChange={(e) => {
-                  setTypeFilter(e.target.value);
-                  reset();
-                }}
-              >
-                {TYPE_OPTS.map((o) => (
-                  <option key={o.v} value={o.v}>
-                    {o.l}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex-1 min-w-[140px]">
-              <label className="text-sm font-medium text-[#374151] font-sans block mb-1.5">
-                Niveau de risque
-              </label>
-              <select
-                className="w-full px-3 py-2.5 rounded-xl border border-[#E5E7EB] text-sm bg-white
-                           focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]/30"
-                value={riskFilter}
-                onChange={(e) => {
-                  setRiskFilter(e.target.value);
-                  reset();
-                }}
-              >
-                {RISK_OPTS.map((o) => (
-                  <option key={o.v} value={o.v}>
-                    {o.l}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <Button
-              variant="ghost"
-              className="w-full sm:w-auto justify-center"
-              onClick={() => {
-                setStatusFilter("");
-                setTypeFilter("");
-                setRiskFilter("");
-                reset();
-              }}
-            >
-              <RefreshCw className="w-4 h-4" /> Réinitialiser
-            </Button>
-          </div>
-        </Card>
+        {/* Tabs */}
+        <div className="flex gap-1 bg-[#F3F4F6] rounded-xl p-1 w-fit">
+          <button
+            className={clsx(
+              "px-4 py-2 rounded-lg text-sm font-medium transition-colors",
+              activeTab === "alerts"
+                ? "bg-white text-[#111827] shadow-sm"
+                : "text-[#6B7280] hover:text-[#111827]",
+            )}
+            onClick={() => setActiveTab("alerts")}
+          >
+            <AlertTriangle className="w-4 h-4 inline mr-1.5" />
+            Alertes
+          </button>
+          <button
+            className={clsx(
+              "px-4 py-2 rounded-lg text-sm font-medium transition-colors",
+              activeTab === "groupements"
+                ? "bg-white text-[#111827] shadow-sm"
+                : "text-[#6B7280] hover:text-[#111827]",
+            )}
+            onClick={() => setActiveTab("groupements")}
+          >
+            <Users className="w-4 h-4 inline mr-1.5" />
+            Groupements bénéficiaires
+          </button>
+        </div>
 
-        {/* Table */}
-        <Card noPad>
-          <div className="flex items-center justify-between px-5 py-3 border-b border-[#E5E7EB]">
-            <p className="text-sm font-medium text-[#374151] font-sans">
-              {total} alerte{total > 1 ? "s" : ""} au total
-            </p>
-            <Button size="sm" onClick={() => setShowCreateModal(true)}>
-              <Plus className="w-4 h-4" /> Nouvelle alerte
-            </Button>
-          </div>
-          <Table
-            columns={columns}
-            data={alerts}
-            loading={loading}
-            emptyText="Aucune alerte trouvée"
-          />
-          <div className="px-5 pb-3">
-            <Pagination {...paginationProps(total)} />
-          </div>
-        </Card>
+        {activeTab === "alerts" && (
+          <>
+            {/* Filtres */}
+            <Card>
+              <div className="flex flex-wrap gap-4 items-end">
+                <div className="flex-1 min-w-[140px]">
+                  <label className="text-sm font-medium text-[#374151] font-sans block mb-1.5">
+                    Statut
+                  </label>
+                  <select
+                    className="w-full px-3 py-2.5 rounded-xl border border-[#E5E7EB] text-sm bg-white
+                               focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]/30"
+                    value={statusFilter}
+                    onChange={(e) => {
+                      setStatusFilter(e.target.value);
+                      reset();
+                    }}
+                  >
+                    {STATUS_OPTS.map((o) => (
+                      <option key={o.v} value={o.v}>
+                        {o.l}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex-1 min-w-[140px]">
+                  <label className="text-sm font-medium text-[#374151] font-sans block mb-1.5">
+                    Type d'alerte
+                  </label>
+                  <select
+                    className="w-full px-3 py-2.5 rounded-xl border border-[#E5E7EB] text-sm bg-white
+                               focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]/30"
+                    value={typeFilter}
+                    onChange={(e) => {
+                      setTypeFilter(e.target.value);
+                      reset();
+                    }}
+                  >
+                    {TYPE_OPTS.map((o) => (
+                      <option key={o.v} value={o.v}>
+                        {o.l}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex-1 min-w-[140px]">
+                  <label className="text-sm font-medium text-[#374151] font-sans block mb-1.5">
+                    Niveau de risque
+                  </label>
+                  <select
+                    className="w-full px-3 py-2.5 rounded-xl border border-[#E5E7EB] text-sm bg-white
+                               focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]/30"
+                    value={riskFilter}
+                    onChange={(e) => {
+                      setRiskFilter(e.target.value);
+                      reset();
+                    }}
+                  >
+                    {RISK_OPTS.map((o) => (
+                      <option key={o.v} value={o.v}>
+                        {o.l}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <Button
+                  variant="ghost"
+                  className="w-full sm:w-auto justify-center"
+                  onClick={() => {
+                    setStatusFilter("");
+                    setTypeFilter("");
+                    setRiskFilter("");
+                    reset();
+                  }}
+                >
+                  <RefreshCw className="w-4 h-4" /> Réinitialiser
+                </Button>
+              </div>
+            </Card>
+
+            {/* Table alertes */}
+            <Card noPad>
+              <div className="flex items-center justify-between px-5 py-3 border-b border-[#E5E7EB]">
+                <p className="text-sm font-medium text-[#374151] font-sans">
+                  {total} alerte{total > 1 ? "s" : ""} au total
+                </p>
+                <Button size="sm" onClick={() => setShowCreateModal(true)}>
+                  <Plus className="w-4 h-4" /> Nouvelle alerte
+                </Button>
+              </div>
+              <Table
+                columns={columns}
+                data={alerts}
+                loading={loading}
+                emptyText="Aucune alerte trouvée"
+              />
+              <div className="px-5 pb-3">
+                <Pagination {...paginationProps(total)} />
+              </div>
+            </Card>
+          </>
+        )}
+
+        {/* ── Table groupements ── */}
+        {activeTab === "groupements" && (
+          <Card noPad>
+            <div className="flex items-center justify-between px-5 py-3 border-b border-[#E5E7EB]">
+              <p className="text-sm font-medium text-[#374151] font-sans">
+                {groupements?.length || 0} bénéficiaire{groupements?.length > 1 ? "s" : ""} suspect{groupements?.length > 1 ? "s" : ""}
+              </p>
+            </div>
+            <div className="divide-y divide-[#F3F4F6]">
+              {(groupements || []).map((g, i) => (
+                <button
+                  key={g.beneficiaire_nom}
+                  className="w-full flex items-center justify-between px-5 py-4 hover:bg-[#F9FAFB] transition-colors text-left"
+                  onClick={() => openGroupement(g.beneficiaire_nom)}
+                >
+                  <div className="flex items-center gap-4">
+                    <span className="w-8 h-8 rounded-full bg-[#FEF2F2] text-[#DC2626] flex items-center justify-center text-sm font-bold flex-shrink-0">
+                      {g.nb_clients}
+                    </span>
+                    <div>
+                      <p className="text-sm font-semibold text-[#111827]">
+                        {g.beneficiaire_nom}
+                      </p>
+                      <p className="text-xs text-[#6B7280]">
+                        {g.nb_clients} client{g.nb_clients > 1 ? "s" : ""} · {g.nb_transactions} transaction{g.nb_transactions > 1 ? "s" : ""}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right text-xs text-[#9CA3AF]">
+                    <p>Dernière alerte</p>
+                    <p className="font-medium text-[#374151]">
+                      {g.derniere_alerte ? formatDatetime(g.derniere_alerte) : "—"}
+                    </p>
+                  </div>
+                </button>
+              ))}
+              {(!groupements || groupements.length === 0) && (
+                <div className="text-center py-12 text-sm text-[#9CA3AF]">
+                  Aucun groupement détecté
+                </div>
+              )}
+            </div>
+          </Card>
+        )}
       </div>
 
       {/* Modal de création manuelle d'alerte */}
@@ -456,6 +568,48 @@ export default function AlertsPage() {
             </Button>
           </ModalFooter>
         </form>
+      </Modal>
+
+      {/* Modal groupement */}
+      <Modal
+        open={groupementModal}
+        onClose={() => setGroupementModal(false)}
+        title={`Groupement — ${groupementDetail || ""}`}
+      >
+        {loadingGroupement ? (
+          <div className="text-center py-8 text-sm text-[#9CA3AF]">
+            Chargement…
+          </div>
+        ) : (
+          <div className="space-y-3 max-h-[60vh] overflow-y-auto">
+            {groupementClients.length === 0 ? (
+              <p className="text-sm text-[#9CA3AF] text-center py-4">
+                Aucun client trouvé
+              </p>
+            ) : (
+              groupementClients.map((c) => (
+                <button
+                  key={c.id}
+                  className="w-full flex items-center justify-between p-3 rounded-xl border border-[#E5E7EB] hover:bg-[#F9FAFB] transition-colors text-left"
+                  onClick={() => {
+                    setGroupementModal(false);
+                    navigate(`/clients/${c.id}`);
+                  }}
+                >
+                  <div>
+                    <p className="text-sm font-semibold text-[#111827]">
+                      {c.prenom} {c.nom}
+                    </p>
+                    <p className="text-xs text-[#6B7280]">{c.phone || "—"}</p>
+                  </div>
+                  <div className="text-right text-xs text-[#9CA3AF]">
+                    <p>ID: {c.id?.slice(0, 8)}…</p>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        )}
       </Modal>
 
       {/* Modal gestion */}

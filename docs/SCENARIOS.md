@@ -98,6 +98,31 @@ Trois profils clients obligatoires créés par `generate_fake_data.py`. Utilisé
 
 ---
 
+## D. Bénéficiaire groupé (groupement)
+
+### Scénario D — Détection automatique de bénéficiaire groupé
+
+Ce scénario est testé automatiquement par `test_scenario_15_beneficiaire_groupe` dans `test_scenarios_complets.py`.
+
+**Déclenchement :** 2 clients distincts envoient un virement au même bénéficiaire `OUEDRAOGO FATIMA` dans une fenêtre de 30 jours.
+La fonction `check_and_alert()` de `beneficiaire_service.py` crée une alerte `BENEFICIAIRE_GROUPEMENT`.
+
+**Seuils (au moins un) :**
+- ≥ 2 clients distincts vers le même bénéficiaire
+- Ou ≥ 5 transactions vers ce bénéficiaire
+- Ou ≥ 5 000 000 FCFA cumulés vers ce bénéficiaire
+
+**Champs stockés dans l'alerte :**
+| Champ | Valeur |
+|-------|--------|
+| `type_alerte` | `BENEFICIAIRE_GROUPEMENT` |
+| `beneficiaire_nom` | `OUEDRAOGO FATIMA` |
+| `tx_ids` | `["uuid_tx_a", "uuid_tx_b"]` |
+
+**Frontend :** L'onglet "Groupements bénéficiaires" de la page Alertes liste tous les bénéficiaires suspects. Le clic sur un bénéficiaire ouvre une modale listant les clients concernés, chacun cliquable vers sa fiche client.
+
+---
+
 ## B. Cas d'utilisation métier (Use Cases)
 
 ### UC-01 : Connexion au système

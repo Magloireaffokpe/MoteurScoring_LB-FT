@@ -165,23 +165,21 @@ def _create_fine_alerts(
     customer_id: UUID,
     result: dict,
     skip_if_open: bool,
+    score_id: UUID | None = None,
 ) -> None:
     """
     Crée les alertes fines issues des champs étendus retournés par ScoringEngine v1.3.
-    [Int-1, Int-2]
-
-    Appelé systématiquement après create_score_alert_if_needed dans tous les
-    points de scoring (scoring initial, rescore unitaire, rescore global).
 
     Alertes créées :
       • PEP_DETECTE  — selon la note brute C5 (0 | 50 | 100)
-      • SMURFING                 — si smurfing_detected == True
+      • SMURFING     — si smurfing_detected == True
 
     :param db:            Session SQLAlchemy active.
     :param customer_id:   UUID du client scoré.
     :param result:        Dict retourné par ScoringEngine.calculate_score().
     :param skip_if_open:  Passer True pour éviter les doublons (rescore),
                           False pour scoring initial.
+    :param score_id:      UUID du score lié.
     """
     # Alerte PEP — différencie actif (100) et ancien (50)
     create_pep_alert_if_needed(
@@ -189,6 +187,7 @@ def _create_fine_alerts(
         customer_id=customer_id,
         c5_score=result["c5_score"],
         skip_if_open=skip_if_open,
+        score_id=score_id,
     )
 
     # Alerte smurfing dédiée — filtrable indépendamment de SCORE_ELEVE
@@ -283,6 +282,7 @@ def _run_scoring(
         customer_id=customer_id,
         global_score=result["global_score"],
         skip_if_open=skip_alert_if_open,
+        score_id=new_score.id,
     )
 
     # ── 6. Alertes fines PEP / smurfing / card testing [Int-1] ───────────
@@ -291,6 +291,7 @@ def _run_scoring(
         customer_id=customer_id,
         result=result,
         skip_if_open=skip_alert_if_open,
+        score_id=new_score.id,
     )
 
     # ── 7. Journalisation audit ───────────────────────────────────────────
@@ -585,6 +586,7 @@ async def rescore_all_customers(
                         customer_id=customer.id,
                         global_score=result["global_score"],
                         skip_if_open=True,
+                        score_id=new_score.id,
                     )
 
                     _create_fine_alerts(
@@ -592,6 +594,7 @@ async def rescore_all_customers(
                         customer_id=customer.id,
                         result=result,
                         skip_if_open=True,
+                        score_id=new_score.id,
                     )
 
                     rescored_count += 1

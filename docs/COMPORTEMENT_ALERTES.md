@@ -41,6 +41,8 @@ Quand `statut = CLOSED`, le endpoint enregistre automatiquement :
 
 Toutes les fonctions de création (`create_score_alert_if_needed`, `create_pep_alert_if_needed`, `create_smurfing_alert_if_needed`, `create_kyc_alert_if_needed`, `create_if_not_open`) vérifient systématiquement via `has_open_alert()` qu'aucune alerte OPEN du même type n'existe déjà pour ce client.
 
+Les alertes `BENEFICIAIRE_GROUPEMENT` sont créées via `create_if_not_open()` qui utilise le même mécanisme : pas de doublon d'alerte ouverte pour le même type **et** le même client.
+
 Seules les alertes CLOSED peuvent être ré-ouvertes par un nouveau déclenchement.
 
 ---
@@ -123,12 +125,14 @@ reste de la chaîne (seuils, bénéficiaire) continue de s'exécuter.
 | POST | `/pep-list` | `add_pep_entry` |
 | GET | `/audit-logs` | `get_audit_logs` |
 
-### alerts.py (5 endpoints — compliance + admin)
+### alerts.py (7 endpoints — compliance + admin)
 
 | Verbe | Route | Fonction |
 |-------|-------|----------|
 | GET | `/alerts` | `list_alerts` |
 | GET | `/alerts/{alert_id}` | `get_alert` |
+| GET | `/alerts/groupements/beneficiaire` | `list_beneficiaire_groupements` |
+| GET | `/alerts/groupements/beneficiaire/{nom}` | `get_beneficiaire_groupement_detail` |
 | POST | `/alerts` | `create_alert` |
 | PUT | `/alerts/{alert_id}` | `update_alert` |
 | GET | `/customers/{customer_id}/alerts` | `get_customer_alerts` |

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func as sa_func
 from sqlalchemy.orm import Session
 from typing import Optional
 from uuid import UUID
@@ -6,7 +7,7 @@ from uuid import UUID
 from app.db.session import get_db
 from app.auth.dependencies import get_current_user, require_compliance_or_admin
 from app.models.alerts import Alert
-from app.schemas.alert import AlertCreate, AlertUpdate, AlertResponse
+from app.schemas.alert import AlertCreate, AlertUpdate, AlertResponse, BeneficiaireGroupement
 from app.schemas.common import PaginatedResponse
 from app.services.audit_service import log_action
 
@@ -73,6 +74,61 @@ def get_customer_alerts(
                  .offset(skip).limit(limit).all()
 
     return PaginatedResponse(items=items, total=total, skip=skip, limit=limit)
+
+
+@router.get("/alerts/groupements/beneficiaire")
+def list_beneficiaire_groupements(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Liste les bénéficiaires suspects regroupés (BENEFICIAIRE_GROUPEMENT)."""
+    rows = (
+        db.query(
+            Alert.beneficiaire_nom,
+            sa_func.count(sa_func.distinct(Alert.client_id)).label("nb_clients"),
+            sa_func.count(Alert.id).label("nb_alertes"),
+            sa_func.min(Alert.date_creation).label("premiere_alerte"),
+            sa_func.max(Alert.date_creation).label("derniere_alerte"),
+        )
+        .filter(
+            Alert.type_alerte == "BENEFICIAIRE_GROUPEMENT",
+            Alert.beneficiaire_nom.isnot(None),
+        )
+        .group_by(Alert.beneficiaire_nom)
+        .order_by(sa_func.count(sa_func.distinct(Alert.client_id)).desc())
+        .all()
+    )
+    return [
+        {
+            "beneficiaire_nom": r.beneficiaire_nom,
+            "nb_clients": r.nb_clients,
+            "nb_transactions": r.nb_alertes,
+            "premiere_alerte": r.premiere_alerte,
+            "derniere_alerte": r.derniere_alerte,
+        }
+        for r in rows
+    ]
+
+
+@router.get("/alerts/groupements/beneficiaire/{nom}")
+def get_beneficiaire_groupement_detail(
+    nom: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Détail d'un groupement : liste des clients et alertes pour ce bénéficiaire."""
+    alerts = (
+        db.query(Alert)
+        .filter(
+            Alert.type_alerte == "BENEFICIAIRE_GROUPEMENT",
+            Alert.beneficiaire_nom == nom,
+        )
+        .order_by(Alert.date_creation.desc())
+        .all()
+    )
+    if not alerts:
+        raise HTTPException(status_code=404, detail="Groupement introuvable")
+    return alerts
 
 
 @router.post("/alerts", response_model=AlertResponse, status_code=201)

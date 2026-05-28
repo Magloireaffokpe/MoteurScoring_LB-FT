@@ -1,6 +1,6 @@
 # Schéma de la Base de Données — RiskGuard
 
-**Version :** 1.2 — Mai 2026
+**Version :** 1.3 — Mai 2026
 **Moteur :** PostgreSQL 15+
 **Migration :** Alembic (dossier `backend/alembic/`)
 **Extensions :** `pgcrypto` (pour UUID)
@@ -242,12 +242,17 @@ risk_zones ──< customers
 | 1 | `id` | `UUID` | PK | `uuid4()` | |
 | 2 | `client_id` | `UUID` | NOT NULL | — | FK → `customers.id`, CASCADE, **indexé** |
 | 3 | `clos_par` | `UUID` | OUI | — | FK → `users.id` |
-| 4 | `type_alerte` | `String(50)` | NOT NULL | — | SCORE_ELEVE / KYC_INCOMPLET / PEP_DETECTE / SMURFING_DETECTE / SEUIL_DEPASSE / BENEFICIAIRE_GROUPEMENT |
-| 5 | `statut` | `String(20)` | NOT NULL | `"OPEN"` | OPEN / CLOSED, **indexé** |
-| 6 | `decision` | `Text` | OUI | — | Commentaire de clôture |
-| 7 | `sar_declare` | `Boolean` | NOT NULL | `false` | SAR transmis à CENTIF |
-| 8 | `date_creation` | `DateTime` | OUI | `now()` | |
-| 9 | `date_cloture` | `DateTime` | OUI | — | |
+| 4 | `score_id` | `UUID` | OUI | — | FK → `scores.id`, ON DELETE SET NULL |
+| 5 | `beneficiaire_nom` | `String(200)` | OUI | — | Nom normalisé du bénéficiaire suspect |
+| 6 | `tx_ids` | `JSONB` | OUI | — | `["uuid1","uuid2"]` — UUIDs des transactions liées |
+| 7 | `type_alerte` | `String(50)` | NOT NULL | — | SCORE_ELEVE / KYC_INCOMPLET / PEP_DETECTE / SMURFING_DETECTE / SEUIL_DEPASSE / BENEFICIAIRE_GROUPEMENT |
+| 8 | `statut` | `String(20)` | NOT NULL | `"OPEN"` | OPEN / CLOSED, **indexé** |
+| 9 | `decision` | `Text` | OUI | — | Commentaire de clôture |
+| 10 | `sar_declare` | `Boolean` | NOT NULL | `false` | SAR transmis à CENTIF |
+| 11 | `date_creation` | `DateTime` | OUI | `now()` | |
+| 12 | `date_cloture` | `DateTime` | OUI | — | |
+
+**Migration :** colonnes 4-6 ajoutées par `cb780a8f74e2`
 
 ---
 
@@ -310,7 +315,7 @@ risk_zones ──< customers
 | `customers` | `phone` | Téléphone unique |
 | `customers` | `email` | Email unique |
 
-### Clés étrangères (18 FK)
+### Clés étrangères (19 FK)
 | Source | Cible | Comportement |
 |--------|-------|-------------|
 | `customers.zone_geo` | `risk_zones.id` | RESTRICT |
@@ -324,7 +329,8 @@ risk_zones ──< customers
 | `transactions.destination_pays_id` | `countries.id` | RESTRICT |
 | `alerts.client_id` | `customers.id` | **CASCADE** |
 | `alerts.clos_par` | `users.id` | SET NULL |
-| `scores.client_id` | `customers.id` | **CASCADE** (corrigé par migration abc123456789) |
+| `alerts.score_id` | `scores.id` | **SET NULL** |
+| `scores.client_id` | `customers.id` | **CASCADE** |
 | `audit_logs.user_id` | `users.id` | RESTRICT |
 | `audit_logs.client_id` | `customers.id` | SET NULL |
 | `pep_list.pays` | `countries.id` | RESTRICT |
@@ -336,7 +342,8 @@ risk_zones ──< customers
 ✅ `customer_accounts.client_id → CASCADE`
 ✅ `transactions.compte_id → CASCADE`
 ✅ `alerts.client_id → CASCADE`
-✅ `scores.client_id` — **CASCADE** (migration abc123456789)
+✅ `alerts.score_id → SET NULL` (suppression score → score_id=NULL sur les alertes)
+✅ `scores.client_id` — **CASCADE**
 
 ---
 

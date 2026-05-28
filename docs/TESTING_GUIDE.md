@@ -362,8 +362,8 @@ ORDER BY t.date_op DESC;
 □ Scénario Fatima   → score ÉLEVÉ   (≥67) + alerte SCORE_ELEVE créée
 □ Σ contributions   → égale au global_score (±1)
 □ is_current        → un seul TRUE par client
-□ pytest unit       → 18/18 tests passent
-□ pytest intégration→ endpoints 200, 401, 404 corrects
+□ pytest unit       → 33/33 tests passent (alert service + model)
+□ pytest intégration→ 15 scénarios complets OK (dont bénéficiaire groupé)
 □ Audit logs        → ligne créée après chaque scoring
 ```
 
@@ -378,4 +378,5 @@ ORDER BY t.date_op DESC;
 | `C5 = 0.0` pour Fatima                 | `statut_pep` non chargé depuis la DB | Vérifier `db.refresh(customer)`                       |
 | Score = 0 pour tous                    | Poids non normalisés (sum ≠ 100)     | Vérifier `_load_weights()` → division par 100         |
 | `UniqueConstraint phone`               | Script relancé sans nettoyage        | Le script est idempotent → nettoie avant de regénérer |
+| `TypeError: Object of type UUID is not JSON serializable` | `tx_ids` contient des UUID Python | SQLite ne sérialise pas les UUIDs → fixé dans `alert_service.py` par `str(u)` |
 | Tests pytest `FAILED`                  | DB de test inaccessible              | Vérifier `DATABASE_URL` dans `.env`                   |
