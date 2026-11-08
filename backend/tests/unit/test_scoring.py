@@ -14,6 +14,7 @@ Prérequis :
 
 from __future__ import annotations
 
+import os
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -39,7 +40,8 @@ from app.services.scoring import ScoringEngine
 # Fixtures
 # ---------------------------------------------------------------------------
 
-TEST_DATABASE_URL = "postgresql://marcos:dev_password_change_in_prod@localhost:5433/scoring_test_db"
+# Utilise TEST_DATABASE_URL si défini, sinon la DATABASE_URL du projet (Neon Cloud)
+TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", os.getenv("DATABASE_URL"))
 
 @pytest.fixture(scope="module")
 def db_engine():

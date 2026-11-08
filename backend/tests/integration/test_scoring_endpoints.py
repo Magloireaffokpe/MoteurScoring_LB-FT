@@ -29,6 +29,7 @@ Corrections appliquées (alignement models) :
 
 from __future__ import annotations
 
+import os
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -56,8 +57,8 @@ from app.models.transactions import Transaction  # [Fix-2] import déplacé en t
 from app.models.users import User
 from app.models.user_roles import UserRole
 
-# ── Configuration DB test ──────────────────────────────────────────────────
-TEST_DATABASE_URL = "postgresql://marcos:dev_password_change_in_prod@localhost:5433/scoring_test_db"
+# Utilise TEST_DATABASE_URL si défini, sinon la DATABASE_URL du projet (Neon Cloud)
+TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", os.getenv("DATABASE_URL"))
 test_engine = create_engine(TEST_DATABASE_URL, echo=False, pool_pre_ping=True)
 TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
 
