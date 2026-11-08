@@ -36,3 +36,37 @@ npm run dev
 ## 📝 License
 
 Projet académique — Université de Parakou, 2025
+
+<!-- nouveau-pc:debut -->
+## Installer sur un nouveau PC
+
+**Prérequis :** Git et Docker avec Compose. Sans Docker : Python 3.12, Node.js 20 ou plus et PostgreSQL.
+
+```bash
+git clone git@github.com:Magloireaffokpe/MoteurScoring_LB-FT.git scoring-lbc-ft
+cd scoring-lbc-ft
+git switch develop           # branche de travail
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
+docker compose up --build    # API : http://localhost:8000 · interface : http://localhost:5173
+
+# Dans un autre terminal, à la première installation :
+docker compose exec backend alembic upgrade head
+```
+
+**Sans Docker :**
+
+```bash
+cd backend
+python3 -m venv venv
+source venv/bin/activate   # Windows : venv\Scripts\activate
+pip install -r requirements.txt
+alembic upgrade head
+uvicorn app.main:app --reload
+
+# Dans un autre terminal
+cd frontend && npm install && npm run dev
+```
+
+**À recopier à la main (hors Git) :** `backend/.env` (réglages `SEUIL_*`, `FENETRE_CUMUL_JOURS`, `BENEFICIAIRE_MIN_*` en plus de ceux de l'exemple) et `frontend/.env`.
+<!-- nouveau-pc:fin -->
