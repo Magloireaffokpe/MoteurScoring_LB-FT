@@ -13,16 +13,17 @@ jobs:
       postgres:
         image: postgres:15-alpine
         env:
-          POSTGRES_USER: ci
-          POSTGRES_PASSWORD: ci
-          POSTGRES_DB: ci_test
-        ports: ['5432:5432']
+          POSTGRES_USER: marcos
+          POSTGRES_PASSWORD: dev_password_change_in_prod
+          POSTGRES_DB: scoring_test_db
+        ports: ['5433:5432']
         options: >-
-          --health-cmd "pg_isready -U ci -d ci_test"
+          --health-cmd "pg_isready -U marcos -d scoring_test_db"
           --health-interval 2s --health-retries 30
+    # Identifiants de test déjà présents dans les fichiers de tests : ils ne servent qu'à cette base temporaire.
     env:
-      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci_test
-      TEST_DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci_test
+      DATABASE_URL: postgresql://marcos:dev_password_change_in_prod@localhost:5433/scoring_test_db
+      TEST_DATABASE_URL: postgresql://marcos:dev_password_change_in_prod@localhost:5433/scoring_test_db
       SECRET_KEY: cle-factice-pour-la-ci-uniquement-0000
     defaults:
       run:
